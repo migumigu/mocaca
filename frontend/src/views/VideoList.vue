@@ -22,7 +22,7 @@
           ></video>
           <!-- 视频标题 -->
           <div class="video-title-overlay">
-            {{ video.filename }}
+            {{ removeFileExtension(video.filename) }}
           </div>
         </div>
       </div>
@@ -77,6 +77,11 @@ export default {
       }
     }
     
+    // 去除文件后缀名
+    const removeFileExtension = (filename) => {
+      return filename.replace(/\.[^/.]+$/, "")
+    }
+
     const openPlayer = (video) => {
       router.push({
         name: 'Player',
@@ -87,7 +92,8 @@ export default {
     return { 
       videos,
       encodeVideoUrl,
-      openPlayer
+      openPlayer,
+      removeFileExtension
     }
   }
 }
