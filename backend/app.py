@@ -29,17 +29,49 @@ def init_db():
         db.create_all()
         scan_media_folder()
 
+def is_portrait_video(filepath):
+    """使用ffprobe判断视频是否为纵向视频"""
+    try:
+        import subprocess
+        import json
+        
+        # 使用ffprobe获取视频信息
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height',
+            '-of', 'json',
+            filepath
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        info = json.loads(result.stdout)
+        
+        width = info['streams'][0]['width']
+        height = info['streams'][0]['height']
+        return height > width  # 高度大于宽度即为纵向视频
+        
+    except Exception as e:
+        print(f"获取视频尺寸失败: {e}")
+        # 如果ffprobe不可用或视频无法读取，默认接受该视频
+        return True
+
 def scan_media_folder():
-    """扫描媒体文件夹并更新数据库"""
+    """递归扫描媒体文件夹及其子目录并更新数据库"""
     existing_files = {v.filename: v for v in Video.query.all()}
-    current_files = set(os.listdir(app.config['MEDIA_FOLDER']))
+    current_files = set()
     
-    # 添加新文件
-    for filename in current_files:
-        if filename.endswith('.mp4') and filename not in existing_files:
-            filepath = os.path.join(app.config['MEDIA_FOLDER'], filename)
-            video = Video(filename=filename, filepath=filepath)
-            db.session.add(video)
+    # 递归扫描所有子目录
+    for root, dirs, files in os.walk(app.config['MEDIA_FOLDER']):
+        for filename in files:
+            if filename.endswith('.mp4'):
+                filepath = os.path.join(root, filename)
+                # 只处理相对路径，保持文件名唯一性
+                rel_path = os.path.relpath(filepath, app.config['MEDIA_FOLDER'])
+                if rel_path not in existing_files and is_portrait_video(filepath):
+                    video = Video(filename=rel_path, filepath=filepath)
+                    db.session.add(video)
+                    current_files.add(rel_path)
     
     db.session.commit()
     update_next_ids()
@@ -98,10 +130,13 @@ def get_prev_video(video_id):
 
 @app.route('/api/videos/file/<path:filename>')
 def get_video_file(filename):
-    """获取视频文件"""
+    """获取视频文件（支持子目录）"""
     video_path = os.path.join(app.config['MEDIA_FOLDER'], filename)
     if os.path.exists(video_path):
-        return send_from_directory(app.config['MEDIA_FOLDER'], filename)
+        # 从完整路径中提取目录和文件名
+        dirname = os.path.dirname(video_path)
+        basename = os.path.basename(video_path)
+        return send_from_directory(dirname, basename)
     return jsonify({'error': 'Video not found'}), 404
 
 @app.route('/api/scan', methods=['POST'])
