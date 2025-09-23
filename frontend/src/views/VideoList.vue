@@ -1,8 +1,12 @@
 <template>
   <div class="video-grid-container">
-    <h1>视频文件列表</h1>
+    <h1>快乐源泉~</h1>
     
-    <div class="video-grid">
+    <div 
+      class="video-grid"
+      ref="videoGrid"
+      @scroll="handleScroll"
+    >
       <div 
         v-for="video in videos" 
         :key="video.id"
@@ -10,7 +14,6 @@
         @click="openPlayer(video)"
       >
         <div class="video-thumbnail">
-          <!-- 视频缩略图 -->
           <video 
             class="thumbnail-video"
             :src="`/api/videos/file/${encodeURIComponent(video.filename)}`"
@@ -20,11 +23,17 @@
             webkit-playsinline
             x5-playsinline
           ></video>
-          <!-- 视频标题 -->
           <div class="video-title-overlay">
             {{ removeFileExtension(video.filename) }}
           </div>
         </div>
+      </div>
+      
+      <div v-if="loading" class="loading-more">
+        加载中...
+      </div>
+      <div v-if="!hasMore" class="no-more">
+        已到底部
       </div>
     </div>
   </div>
@@ -38,10 +47,17 @@ export default {
   setup() {
     const videos = ref([])
     const router = useRouter()
+    const videoGrid = ref(null)
+    const loading = ref(false)
+    const hasMore = ref(true)
+    const page = ref(1)
     
-    onMounted(async () => {
+    const loadVideos = async () => {
+      if (loading.value || !hasMore.value) return
+      
+      loading.value = true
       try {
-        const res = await fetch('/api/videos', {
+        const res = await fetch(`http://localhost:5003/api/videos?page=${page.value}`, {
           headers: {
             'Content-Type': 'application/json'
           }
@@ -49,35 +65,59 @@ export default {
         if (!res.ok) throw new Error(`HTTP错误! 状态码: ${res.status}`)
         
         const data = await res.json()
-        videos.value = data
-        
-        // 设置视频元素只显示第一帧
-        setTimeout(() => {
-          const videoElements = document.querySelectorAll('.thumbnail-video')
-          videoElements.forEach(video => {
-            video.currentTime = 0.1 // 设置到0.1秒确保能获取到帧
-            video.addEventListener('loadeddata', () => {
-              video.pause()
+        if (!data.items) {
+          hasMore.value = false
+        } else {
+          videos.value = [...videos.value, ...data.items]
+          hasMore.value = data.has_next
+          page.value += 1
+          // 即使视频不足20个也显示
+          if (data.items.length < 20) {
+            hasMore.value = false
+          }
+          
+          // 延迟设置视频缩略图
+          setTimeout(() => {
+            const videoElements = document.querySelectorAll('.thumbnail-video')
+            videoElements.forEach(video => {
+              if (!video.dataset.loaded) {
+                video.currentTime = 0.1
+                video.addEventListener('loadeddata', () => {
+                  video.pause()
+                  video.dataset.loaded = true
+                })
+              }
             })
-          })
-        }, 500) // 延迟确保视频元素已加载
+          }, 100)
+        }
       } catch (error) {
         console.error('获取视频列表失败:', error)
+      } finally {
+        loading.value = false
       }
+    }
+    
+    const handleScroll = () => {
+      const grid = videoGrid.value
+      if (grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 100) {
+        loadVideos()
+      }
+    }
+
+    onMounted(() => {
+      loadVideos()
     })
 
     const encodeVideoUrl = (url) => {
       try {
-        // 直接使用原始文件名
         const filename = url.split('/').pop()
         return `/api/videos/${filename}`
       } catch (e) {
         console.error('URL编码错误:', e)
-        return url // 回退原始URL
+        return url
       }
     }
     
-    // 去除文件后缀名
     const removeFileExtension = (filename) => {
       return filename.replace(/\.[^/.]+$/, "")
     }
@@ -91,6 +131,10 @@ export default {
 
     return { 
       videos,
+      videoGrid,
+      loading,
+      hasMore,
+      handleScroll,
       encodeVideoUrl,
       openPlayer,
       removeFileExtension
@@ -98,6 +142,21 @@ export default {
   }
 }
 </script>
+
+<style>
+.loading-more,
+.no-more {
+  text-align: center;
+  padding: 20px;
+  grid-column: 1 / -1;
+  color: #666;
+}
+
+.no-more {
+  color: #999;
+  font-size: 0.9em;
+}
+</style>
 
 <style>
 .video-grid-container {

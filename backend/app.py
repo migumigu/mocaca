@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, request
 from werkzeug.utils import secure_filename
 import os
 from flask_cors import CORS
@@ -85,12 +85,24 @@ def update_next_ids():
 
 @app.route('/api/videos')
 def list_videos():
-    """获取视频列表"""
-    videos = Video.query.order_by(Video.id).all()
-    return jsonify([{
-        'id': v.id,
-        'filename': v.filename
-    } for v in videos])
+    """获取视频列表（支持分页）"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    
+    pagination = Video.query.order_by(Video.id).paginate(
+        page=page, 
+        per_page=per_page,
+        error_out=False
+    )
+    
+    return jsonify({
+        'items': [{
+            'id': v.id,
+            'filename': v.filename
+        } for v in pagination.items],
+        'has_next': pagination.has_next,
+        'total': pagination.total
+    })
 
 @app.route('/api/videos/<int:video_id>')
 def get_video_info(video_id):
