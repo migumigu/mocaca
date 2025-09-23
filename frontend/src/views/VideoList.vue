@@ -11,15 +11,17 @@
           @click="openPlayer(video)"
         >
           <div class="video-thumbnail">
-            <video 
-              class="thumbnail-video"
-              :src="`/api/videos/file/${encodeURIComponent(video.filename)}`"
-              preload="metadata"
-              muted
-              playsinline
-              webkit-playsinline
-              x5-playsinline
-            ></video>
+            <img 
+              v-if="video.thumbnail_url"
+              class="thumbnail-image"
+              :src="video.thumbnail_url"
+              :alt="removeFileExtension(video.filename)"
+              @load="handleThumbnailLoad(video.id)"
+              @error="handleThumbnailError(video.id)"
+            />
+            <div v-else class="thumbnail-placeholder">
+              <div class="loading-spinner"></div>
+            </div>
             <div class="video-title-overlay">
               {{ removeFileExtension(video.filename) }}
             </div>
@@ -70,6 +72,60 @@ export default {
     const hasMore = ref(true)
     const page = ref(1)
     
+
+    
+    const handleScroll = () => {
+      const container = videoGrid.value
+      if (container && container.scrollTop + container.clientHeight >= container.scrollHeight - 100) {
+        loadVideos()
+      }
+    }
+
+    onMounted(() => {
+      loadVideos()
+      
+      // 页面加载后，自动为前几个视频生成缩略图
+      setTimeout(() => {
+        preGenerateThumbnails()
+      }, 2000)
+    })
+
+    const preGenerateThumbnails = async (startIndex = 0, count = 5) => {
+      // 为指定范围的视频预生成缩略图
+      const endIndex = Math.min(startIndex + count, videos.value.length)
+      const videosToPreGenerate = videos.value.slice(startIndex, endIndex)
+      
+      for (const video of videosToPreGenerate) {
+        if (!video.thumbnail_url) {
+          try {
+            const baseUrl = import.meta.env.DEV 
+              ? '/api' 
+              : `${window.location.protocol}//${window.location.hostname}:5003/api`;
+            
+            await fetch(`${baseUrl}/thumbnail/${video.id}`)
+            console.log(`预生成缩略图: ${video.id}`)
+            // 更新该视频的缩略图URL，触发重新渲染
+            const videoIndex = videos.value.findIndex(v => v.id === video.id)
+            if (videoIndex !== -1) {
+              videos.value[videoIndex].thumbnail_url = `/api/thumbnail/${video.id}`
+              // 强制更新视图
+              videos.value = [...videos.value]
+            }
+          } catch (error) {
+            console.error(`预生成缩略图失败: ${video.id}`, error)
+          }
+        }
+      }
+      
+      // 如果还有更多视频，继续预生成
+      if (endIndex < videos.value.length) {
+        setTimeout(() => {
+          preGenerateThumbnails(endIndex, count)
+        }, 1000) // 1秒后继续生成下一批
+      }
+    }
+    
+    // 在loadVideos函数中添加缩略图预生成
     const loadVideos = async () => {
       if (loading.value || !hasMore.value) return
       
@@ -90,6 +146,7 @@ export default {
         if (!data.items) {
           hasMore.value = false
         } else {
+          const oldLength = videos.value.length
           videos.value = [...videos.value, ...data.items]
           hasMore.value = data.has_next
           page.value += 1
@@ -98,19 +155,12 @@ export default {
             hasMore.value = false
           }
           
-          // 延迟设置视频缩略图
-          setTimeout(() => {
-            const videoElements = document.querySelectorAll('.thumbnail-video')
-            videoElements.forEach(video => {
-              if (!video.dataset.loaded) {
-                video.currentTime = 0.1
-                video.addEventListener('loadeddata', () => {
-                  video.pause()
-                  video.dataset.loaded = true
-                })
-              }
-            })
-          }, 100)
+          // 缩略图现在由后端提供，无需前端处理视频加载
+          
+          // 为新加载的视频预生成缩略图
+          if (oldLength > 0) {
+            preGenerateThumbnails(oldLength, 5)
+          }
         }
       } catch (error) {
         console.error('获取视频列表失败:', error)
@@ -118,17 +168,6 @@ export default {
         loading.value = false
       }
     }
-    
-    const handleScroll = () => {
-      const container = videoGrid.value
-      if (container && container.scrollTop + container.clientHeight >= container.scrollHeight - 100) {
-        loadVideos()
-      }
-    }
-
-    onMounted(() => {
-      loadVideos()
-    })
 
     const encodeVideoUrl = (url) => {
       try {
@@ -151,6 +190,38 @@ export default {
       })
     }
 
+    const handleThumbnailLoad = (videoId) => {
+      console.log(`缩略图加载成功: ${videoId}`)
+    }
+
+    const handleThumbnailError = async (videoId) => {
+      console.log(`缩略图加载失败，尝试生成: ${videoId}`)
+      
+      // 触发后端生成缩略图
+      try {
+        const baseUrl = import.meta.env.DEV 
+          ? '/api' 
+          : `${window.location.protocol}//${window.location.hostname}:5003/api`;
+        
+        // 调用缩略图生成API
+        const response = await fetch(`${baseUrl}/thumbnail/${videoId}`)
+        if (response.ok) {
+          console.log(`缩略图生成成功: ${videoId}`)
+          // 更新该视频的缩略图URL，触发重新渲染
+          const videoIndex = videos.value.findIndex(v => v.id === videoId)
+          if (videoIndex !== -1) {
+            videos.value[videoIndex].thumbnail_url = `/api/thumbnail/${videoId}`
+            // 强制更新视图
+            videos.value = [...videos.value]
+          }
+        } else {
+          console.error(`缩略图生成失败: ${videoId}`, response.status)
+        }
+      } catch (error) {
+        console.error(`触发缩略图生成失败: ${videoId}`, error)
+      }
+    }
+
     return { 
       videos,
       videoGrid,
@@ -159,7 +230,9 @@ export default {
       handleScroll,
       encodeVideoUrl,
       openPlayer,
-      removeFileExtension
+      removeFileExtension,
+      handleThumbnailLoad,
+      handleThumbnailError
     }
   }
 }
@@ -240,14 +313,39 @@ h1 {
   overflow: hidden;
 }
 
-.thumbnail-video {
+.thumbnail-image {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  pointer-events: none; /* 防止视频可点击 */
+}
+
+.thumbnail-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f0f0f0;
+}
+
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #ccc;
+  border-top: 2px solid #ff6b81;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .video-title-overlay {

@@ -5,6 +5,11 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import sqlite3
+import subprocess
+import uuid
+from PIL import Image
+import io
+import base64
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
@@ -18,11 +23,17 @@ class Video(db.Model):
     filename = db.Column(db.String(255), unique=True, nullable=False)
     filepath = db.Column(db.String(512), nullable=False)
     next_id = db.Column(db.Integer, db.ForeignKey('video.id'))
+    thumbnail_path = db.Column(db.String(512))  # 缩略图文件路径
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 # 配置媒体文件路径
 MEDIA_FOLDER = os.path.join(os.path.dirname(__file__), '../media')
+THUMBNAIL_FOLDER = os.path.join(os.path.dirname(__file__), '../thumbnails')
 app.config['MEDIA_FOLDER'] = MEDIA_FOLDER
+app.config['THUMBNAIL_FOLDER'] = THUMBNAIL_FOLDER
+
+# 确保缩略图目录存在
+os.makedirs(THUMBNAIL_FOLDER, exist_ok=True)
 
 def init_db():
     with app.app_context():
@@ -83,26 +94,7 @@ def update_next_ids():
         videos[i].next_id = videos[i+1].id
     db.session.commit()
 
-@app.route('/api/videos')
-def list_videos():
-    """获取视频列表（支持分页）"""
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
-    
-    pagination = Video.query.order_by(Video.id).paginate(
-        page=page, 
-        per_page=per_page,
-        error_out=False
-    )
-    
-    return jsonify({
-        'items': [{
-            'id': v.id,
-            'filename': v.filename
-        } for v in pagination.items],
-        'has_next': pagination.has_next,
-        'total': pagination.total
-    })
+
 
 @app.route('/api/videos/<int:video_id>')
 def get_video_info(video_id):
@@ -157,28 +149,121 @@ def scan_videos():
     scan_media_folder()
     return jsonify({'status': 'success'})
 
-@app.route('/api/videos/<path:filename>')
-def get_video(filename):
-    # 直接使用原始文件名，不使用 secure_filename
-    # 因为 secure_filename 会移除方括号等特殊字符
-    video_path = os.path.join(app.config['MEDIA_FOLDER'], filename)
+
+
+def generate_thumbnail(video_path, output_path, time_position='00:00:01'):
+    """使用ffmpeg生成视频缩略图"""
+    try:
+        cmd = [
+            'ffmpeg',
+            '-i', video_path,
+            '-ss', time_position,
+            '-vframes', '1',
+            '-vf', 'scale=320:-1',
+            '-q:v', '2',
+            output_path,
+            '-y'  # 覆盖已存在的文件
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"生成缩略图失败: {e}")
+        return False
+    except Exception as e:
+        print(f"生成缩略图异常: {e}")
+        return False
+
+@app.route('/api/thumbnail/<int:video_id>')
+def get_thumbnail(video_id):
+    """获取视频缩略图，如果不存在则生成"""
+    video = Video.query.get_or_404(video_id)
     
+    # 如果已有缩略图路径，直接返回
+    if video.thumbnail_path and os.path.exists(video.thumbnail_path):
+        return send_from_directory(
+            os.path.dirname(video.thumbnail_path),
+            os.path.basename(video.thumbnail_path),
+            mimetype='image/jpeg'
+        )
+    
+    # 生成缩略图
+    video_path = os.path.join(app.config['MEDIA_FOLDER'], video.filename)
     if not os.path.exists(video_path):
-        # 尝试查找不区分大小写的匹配
-        for file in os.listdir(app.config['MEDIA_FOLDER']):
-            if file.lower() == filename.lower():
-                filename = file
-                break
-        # 再次检查文件是否存在
-        video_path = os.path.join(app.config['MEDIA_FOLDER'], filename)
-        if not os.path.exists(video_path):
-            return f"File not found: {filename}", 404
+        return jsonify({'error': 'Video file not found'}), 404
+    
+    # 创建缩略图文件名
+    thumbnail_filename = f"{video.id}_{os.path.basename(video.filename)}.jpg"
+    thumbnail_path = os.path.join(app.config['THUMBNAIL_FOLDER'], thumbnail_filename)
+    
+    # 生成缩略图
+    if generate_thumbnail(video_path, thumbnail_path):
+        # 更新数据库
+        video.thumbnail_path = thumbnail_path
+        db.session.commit()
+        return send_from_directory(
+            app.config['THUMBNAIL_FOLDER'],
+            thumbnail_filename,
+            mimetype='image/jpeg'
+        )
+    else:
+        return jsonify({'error': 'Failed to generate thumbnail'}), 500
+
+@app.route('/api/upload_thumbnail/<int:video_id>', methods=['POST'])
+def upload_thumbnail(video_id):
+    """前端上传缩略图（base64格式）"""
+    video = Video.query.get_or_404(video_id)
+    data = request.get_json()
+    
+    if not data or 'thumbnail' not in data:
+        return jsonify({'error': 'No thumbnail data provided'}), 400
+    
+    try:
+        # 解析base64数据
+        thumbnail_data = data['thumbnail']
+        if thumbnail_data.startswith('data:image/jpeg;base64,'):
+            thumbnail_data = thumbnail_data.replace('data:image/jpeg;base64,', '')
         
-    return send_from_directory(
-        app.config['MEDIA_FOLDER'],
-        filename,
-        mimetype='video/mp4'
+        # 解码base64
+        image_data = base64.b64decode(thumbnail_data)
+        
+        # 保存缩略图
+        thumbnail_filename = f"{video.id}_{os.path.basename(video.filename)}.jpg"
+        thumbnail_path = os.path.join(app.config['THUMBNAIL_FOLDER'], thumbnail_filename)
+        
+        with open(thumbnail_path, 'wb') as f:
+            f.write(image_data)
+        
+        # 更新数据库
+        video.thumbnail_path = thumbnail_path
+        db.session.commit()
+        
+        return jsonify({'status': 'success', 'thumbnail_path': thumbnail_path})
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to process thumbnail: {str(e)}'}), 500
+
+# 修改视频列表API，返回缩略图URL
+@app.route('/api/videos')
+def list_videos():
+    """获取视频列表（支持分页）"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    
+    pagination = Video.query.order_by(Video.id).paginate(
+        page=page, 
+        per_page=per_page,
+        error_out=False
     )
+    
+    return jsonify({
+        'items': [{
+            'id': v.id,
+            'filename': v.filename,
+            'thumbnail_url': f'/api/thumbnail/{v.id}' if v.thumbnail_path else None
+        } for v in pagination.items],
+        'has_next': pagination.has_next,
+        'total': pagination.total
+    })
 
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', '5003'))
