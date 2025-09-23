@@ -1,39 +1,57 @@
 <template>
-  <div class="video-grid-container">
-    <h1>快乐源泉~</h1>
-    
-    <div 
-      class="video-grid"
-      ref="videoGrid"
-      @scroll="handleScroll"
-    >
-      <div 
-        v-for="video in videos" 
-        :key="video.id"
-        class="video-card"
-        @click="openPlayer(video)"
-      >
-        <div class="video-thumbnail">
-          <video 
-            class="thumbnail-video"
-            :src="`/api/videos/file/${encodeURIComponent(video.filename)}`"
-            preload="metadata"
-            muted
-            playsinline
-            webkit-playsinline
-            x5-playsinline
-          ></video>
-          <div class="video-title-overlay">
-            {{ removeFileExtension(video.filename) }}
+  <div class="app-container">
+    <div class="video-grid-container" ref="videoGrid" @scroll="handleScroll">
+      <h1>快乐源泉~</h1>
+      
+      <div class="video-grid">
+        <div 
+          v-for="video in videos" 
+          :key="video.id"
+          class="video-card"
+          @click="openPlayer(video)"
+        >
+          <div class="video-thumbnail">
+            <video 
+              class="thumbnail-video"
+              :src="`/api/videos/file/${encodeURIComponent(video.filename)}`"
+              preload="metadata"
+              muted
+              playsinline
+              webkit-playsinline
+              x5-playsinline
+            ></video>
+            <div class="video-title-overlay">
+              {{ removeFileExtension(video.filename) }}
+            </div>
           </div>
         </div>
+        
+        <div v-if="loading" class="loading-more">
+          加载中...
+        </div>
+        <div v-if="!hasMore" class="no-more">
+          已到底部
+        </div>
       </div>
-      
-      <div v-if="loading" class="loading-more">
-        加载中...
+    </div>
+    
+    <!-- 底部导航栏 -->
+    <div class="bottom-nav">
+      <div class="nav-item active">
+        <i class="nav-icon">🏠</i>
+        <span>首页</span>
       </div>
-      <div v-if="!hasMore" class="no-more">
-        已到底部
+      <div class="nav-item">
+        <i class="nav-icon">📁</i>
+        <span>目录</span>
+      </div>
+      <div class="nav-item">
+        <i class="nav-icon">⭐</i>
+        <span>收藏</span>
+      </div>
+      <div class="nav-item">
+        <i class="nav-icon">⚙️</i>
+        <span>设置</span>
       </div>
     </div>
   </div>
@@ -57,7 +75,11 @@ export default {
       
       loading.value = true
       try {
-        const res = await fetch(`http://localhost:5003/api/videos?page=${page.value}`, {
+        // 根据环境动态获取API基础URL
+        const baseUrl = import.meta.env.DEV 
+          ? '/api' 
+          : `${window.location.protocol}//${window.location.hostname}:5003/api`;
+        const res = await fetch(`${baseUrl}/videos?page=${page.value}`, {
           headers: {
             'Content-Type': 'application/json'
           }
@@ -98,8 +120,8 @@ export default {
     }
     
     const handleScroll = () => {
-      const grid = videoGrid.value
-      if (grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 100) {
+      const container = videoGrid.value
+      if (container && container.scrollTop + container.clientHeight >= container.scrollHeight - 100) {
         loadVideos()
       }
     }
@@ -159,10 +181,31 @@ export default {
 </style>
 
 <style>
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
 .video-grid-container {
   padding: 10px;
   max-width: 1200px;
+  width: 100%;
   margin: 0 auto;
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 60px; /* 为底部导航栏留出空间 */
+  box-sizing: border-box;
+  /* 隐藏滚动条但保持滚动功能 */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+/* 隐藏WebKit浏览器的滚动条 */
+.video-grid-container::-webkit-scrollbar {
+  display: none;
 }
 
 h1 {
@@ -175,6 +218,7 @@ h1 {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 10px;
+  width: 100%;
 }
 
 .video-card {
@@ -218,5 +262,44 @@ h1 {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 底部导航栏样式 */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background-color: #fff;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 100%;
+  color: #666;
+  transition: color 0.3s;
+}
+
+.nav-item.active {
+  color: #ff6b81;
+}
+
+.nav-icon {
+  font-size: 1.2rem;
+  margin-bottom: 2px;
+}
+
+.nav-item span {
+  font-size: 0.7rem;
 }
 </style>
