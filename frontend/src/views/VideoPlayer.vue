@@ -31,7 +31,7 @@
         ></video>
         
         <div class="video-info">
-          <div class="video-title">{{ removeFileExtension(currentVideo.filename) }}</div>
+          <div class="video-title">{{ currentVideo.filename ? removeFileExtension(currentVideo.filename) : '' }}</div>
         </div>
         
         <!-- 加载指示器 -->
@@ -251,8 +251,9 @@ export default {
       }
     }
 
-    // 去除文件后缀名
+    // 去除文件后缀名（带空值检查）
     const removeFileExtension = (filename) => {
+      if (!filename) return ''
       return filename.replace(/\.[^/.]+$/, "")
     }
 
