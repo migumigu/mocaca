@@ -47,13 +47,13 @@
         <i class="nav-icon">📁</i>
         <span>目录</span>
       </div>
-      <div class="nav-item">
+      <div class="nav-item" @click="$router.push('/favorites')">
         <i class="nav-icon">⭐</i>
         <span>收藏</span>
       </div>
-      <div class="nav-item">
-        <i class="nav-icon">⚙️</i>
-        <span>设置</span>
+      <div class="nav-item" @click="$router.push('/profile')">
+        <i class="nav-icon">👤</i>
+        <span>我</span>
       </div>
     </div>
   </div>
@@ -360,6 +360,31 @@ h1 {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.favorite-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.favorite-button:hover {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.favorite-icon {
+  font-size: 16px;
+  line-height: 1;
 }
 
 /* 底部导航栏样式 */

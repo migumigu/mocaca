@@ -18,6 +18,13 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # 数据库模型
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password = db.Column(db.String(120), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 class Video(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), unique=True, nullable=False)
@@ -25,6 +32,15 @@ class Video(db.Model):
     next_id = db.Column(db.Integer, db.ForeignKey('video.id'))
     thumbnail_path = db.Column(db.String(512))  # 缩略图文件路径
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Favorite(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    video_id = db.Column(db.Integer, db.ForeignKey('video.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # 唯一约束，防止重复收藏
+    __table_args__ = (db.UniqueConstraint('user_id', 'video_id', name='_user_video_uc'),)
 
 # 配置媒体文件路径
 MEDIA_FOLDER = os.path.join(os.path.dirname(__file__), '../media')
@@ -38,6 +54,13 @@ os.makedirs(THUMBNAIL_FOLDER, exist_ok=True)
 def init_db():
     with app.app_context():
         db.create_all()
+        # 创建默认管理员账户
+        admin_user = User.query.filter_by(username='admin').first()
+        if not admin_user:
+            admin_user = User(username='admin', password='admin', is_admin=True)
+            db.session.add(admin_user)
+            db.session.commit()
+            print("创建默认管理员账户: admin/admin")
         scan_media_folder()
 
 def is_portrait_video(filepath):
@@ -264,6 +287,90 @@ def list_videos():
         'has_next': pagination.has_next,
         'total': pagination.total
     })
+
+# 用户认证和收藏相关API
+@app.route('/api/login', methods=['POST'])
+def login():
+    """用户登录"""
+    data = request.get_json()
+    if not data or 'username' not in data or 'password' not in data:
+        return jsonify({'error': '用户名和密码不能为空'}), 400
+    
+    user = User.query.filter_by(username=data['username'], password=data['password']).first()
+    if user:
+        return jsonify({
+            'status': 'success',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'is_admin': user.is_admin
+            }
+        })
+    return jsonify({'error': '用户名或密码错误'}), 401
+
+@app.route('/api/favorites', methods=['GET'])
+def get_favorites():
+    """获取用户的收藏列表"""
+    user_id = request.args.get('user_id', type=int)
+    if not user_id:
+        return jsonify({'error': '用户ID不能为空'}), 400
+    
+    favorites = Favorite.query.filter_by(user_id=user_id).all()
+    favorite_videos = []
+    for fav in favorites:
+        video = Video.query.get(fav.video_id)
+        if video:
+            favorite_videos.append({
+                'id': video.id,
+                'filename': video.filename,
+                'thumbnail_url': f'/api/thumbnail/{video.id}' if video.thumbnail_path else None
+            })
+    
+    return jsonify(favorite_videos)
+
+@app.route('/api/favorites', methods=['POST'])
+def add_favorite():
+    """添加收藏"""
+    data = request.get_json()
+    if not data or 'user_id' not in data or 'video_id' not in data:
+        return jsonify({'error': '用户ID和视频ID不能为空'}), 400
+    
+    try:
+        favorite = Favorite(user_id=data['user_id'], video_id=data['video_id'])
+        db.session.add(favorite)
+        db.session.commit()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': '收藏失败，可能已经收藏过'}), 400
+
+@app.route('/api/favorites', methods=['DELETE'])
+def remove_favorite():
+    """移除收藏"""
+    user_id = request.args.get('user_id', type=int)
+    video_id = request.args.get('video_id', type=int)
+    
+    if not user_id or not video_id:
+        return jsonify({'error': '用户ID和视频ID不能为空'}), 400
+    
+    favorite = Favorite.query.filter_by(user_id=user_id, video_id=video_id).first()
+    if favorite:
+        db.session.delete(favorite)
+        db.session.commit()
+        return jsonify({'status': 'success'})
+    return jsonify({'error': '收藏记录不存在'}), 404
+
+@app.route('/api/favorites/check', methods=['GET'])
+def check_favorite():
+    """检查是否已收藏"""
+    user_id = request.args.get('user_id', type=int)
+    video_id = request.args.get('video_id', type=int)
+    
+    if not user_id or not video_id:
+        return jsonify({'error': '用户ID和视频ID不能为空'}), 400
+    
+    favorite = Favorite.query.filter_by(user_id=user_id, video_id=video_id).first()
+    return jsonify({'is_favorited': favorite is not None})
 
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', '5003'))

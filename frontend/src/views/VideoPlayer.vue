@@ -48,6 +48,21 @@
             <path d="M8 5v14l11-7z"/>
           </svg>
         </div>
+
+        <!-- 抖音风格右侧操作栏 -->
+        <div class="right-action-bar">
+          <!-- 收藏按钮 -->
+          <div class="action-button" @click.stop="toggleFavorite">
+            <div class="action-icon">
+              <svg v-if="isFavorited" class="favorite-icon filled" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+              </svg>
+              <svg v-else class="favorite-icon outline" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+              </svg>
+            </div>
+          </div>
+        </div>
       </div>
     </transition>
     
@@ -92,6 +107,36 @@ export default {
     const touchEndY = ref(0)
     const swipeThreshold = 100 // 滑动阈值，超过这个值才触发切换
 
+    // 检查是否在收藏页面
+    const isFavoritesPage = computed(() => {
+      return route.path.includes('/favorites') || route.query.from === 'favorites'
+    })
+
+    // 收藏列表相关状态
+    const favoritesList = ref([])
+    const currentFavoritesIndex = ref(-1)
+
+    // 加载收藏列表
+    const loadFavoritesList = async () => {
+      if (!isFavoritesPage.value) return
+      
+      try {
+        const savedUser = localStorage.getItem('currentUser')
+        if (!savedUser) return
+        
+        const user = JSON.parse(savedUser)
+        const baseUrl = getBaseUrl()
+        const res = await fetch(`${baseUrl}/favorites?user_id=${user.id}`)
+        
+        if (res.ok) {
+          const data = await res.json()
+          favoritesList.value = data || [] // 直接使用返回的数组，不是data.favorites
+        }
+      } catch (error) {
+        console.error('加载收藏列表失败:', error)
+      }
+    }
+
     // 获取当前视频信息
     const fetchVideoInfo = async (id) => {
       try {
@@ -103,18 +148,43 @@ export default {
           ...data,
           url: `/api/videos/file/${encodeURIComponent(data.filename)}`
         }
-        nextVideoId.value = data.next_id
         
-        // 获取前一个视频ID
-        try {
-          const prevRes = await fetch(`/api/videos/prev/${id}`)
-          if (prevRes.ok) {
-            const prevData = await prevRes.json()
-            prevVideoId.value = prevData.id
+        // 如果在收藏页面，按收藏列表顺序设置上下视频
+        if (isFavoritesPage.value) {
+          await loadFavoritesList()
+          const index = favoritesList.value.findIndex(fav => fav.id === parseInt(id))
+          currentFavoritesIndex.value = index
+          
+          if (index !== -1) {
+            // 设置下一个视频ID
+            if (index < favoritesList.value.length - 1) {
+              nextVideoId.value = favoritesList.value[index + 1].id
+            } else {
+              nextVideoId.value = null
+            }
+            
+            // 设置上一个视频ID
+            if (index > 0) {
+              prevVideoId.value = favoritesList.value[index - 1].id
+            } else {
+              prevVideoId.value = null
+            }
           }
-        } catch (error) {
-          console.error('获取前一个视频失败:', error)
-          prevVideoId.value = null
+        } else {
+          // 普通页面按所有视频顺序设置
+          nextVideoId.value = data.next_id
+          
+          // 获取前一个视频ID
+          try {
+            const prevRes = await fetch(`/api/videos/prev/${id}`)
+            if (prevRes.ok) {
+              const prevData = await prevRes.json()
+              prevVideoId.value = prevData.id
+            }
+          } catch (error) {
+            console.error('获取前一个视频失败:', error)
+            prevVideoId.value = null
+          }
         }
       } catch (error) {
         console.error('获取视频信息失败:', error)
@@ -200,7 +270,12 @@ export default {
     }
 
     const goBack = () => {
-      router.push('/')
+      // 根据来源页面决定返回位置
+      if (isFavoritesPage.value) {
+        router.push('/favorites')
+      } else {
+        router.push('/')
+      }
     }
 
     // 处理触摸开始事件
@@ -231,7 +306,14 @@ export default {
         isTransitioning.value = true
         // 设置滑动方向 - 向上滑动加载下一个（新视频从上方进入）
         document.documentElement.style.setProperty('--slide-direction', '100%')
-        router.push({ name: 'Player', params: { id: nextVideoId.value } })
+        
+        // 保持当前页面上下文
+        if (isFavoritesPage.value) {
+          router.push({ name: 'Player', params: { id: nextVideoId.value }, query: { from: 'favorites' } })
+        } else {
+          router.push({ name: 'Player', params: { id: nextVideoId.value } })
+        }
+        
         setTimeout(() => {
           isTransitioning.value = false
         }, 500) // 动画过渡时间
@@ -244,7 +326,14 @@ export default {
         isTransitioning.value = true
         // 设置滑动方向 - 向下滑动加载前一个（新视频从下方进入）
         document.documentElement.style.setProperty('--slide-direction', '-100%')
-        router.push({ name: 'Player', params: { id: prevVideoId.value } })
+        
+        // 保持当前页面上下文
+        if (isFavoritesPage.value) {
+          router.push({ name: 'Player', params: { id: prevVideoId.value }, query: { from: 'favorites' } })
+        } else {
+          router.push({ name: 'Player', params: { id: prevVideoId.value } })
+        }
+        
         setTimeout(() => {
           isTransitioning.value = false
         }, 500) // 动画过渡时间
@@ -256,6 +345,96 @@ export default {
       if (!filename) return ''
       return filename.replace(/\.[^/.]+$/, "")
     }
+
+    // 收藏功能相关状态
+    const isFavorited = ref(false)
+    const favoriteCount = ref(0)
+    const currentUser = ref(null)
+
+    const getBaseUrl = () => {
+      return import.meta.env.DEV 
+        ? '/api' 
+        : `${window.location.protocol}//${window.location.hostname}:5003/api`
+    }
+
+    // 检查收藏状态
+    const checkFavoriteStatus = async () => {
+      const savedUser = localStorage.getItem('currentUser')
+      if (!savedUser) return
+      
+      currentUser.value = JSON.parse(savedUser)
+      const userId = currentUser.value.id
+      const videoId = route.params.id
+
+      try {
+        const baseUrl = getBaseUrl()
+        const res = await fetch(`${baseUrl}/favorites/check?user_id=${userId}&video_id=${videoId}`)
+        if (res.ok) {
+          const data = await res.json()
+          isFavorited.value = data.is_favorited
+        }
+      } catch (error) {
+        console.error('检查收藏状态失败:', error)
+      }
+    }
+
+    // 切换收藏状态
+    const toggleFavorite = async () => {
+      const savedUser = localStorage.getItem('currentUser')
+      if (!savedUser) {
+        alert('请先登录后再收藏')
+        return
+      }
+
+      currentUser.value = JSON.parse(savedUser)
+      const userId = currentUser.value.id
+      const videoId = route.params.id
+
+      try {
+        const baseUrl = getBaseUrl()
+        
+        if (isFavorited.value) {
+          // 取消收藏
+          const res = await fetch(`${baseUrl}/favorites?user_id=${userId}&video_id=${videoId}`, {
+            method: 'DELETE'
+          })
+          if (res.ok) {
+            isFavorited.value = false
+            favoriteCount.value = Math.max(0, favoriteCount.value - 1)
+          }
+        } else {
+          // 添加收藏
+          const res = await fetch(`${baseUrl}/favorites`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              user_id: userId,
+              video_id: videoId
+            })
+          })
+          if (res.ok) {
+            isFavorited.value = true
+            favoriteCount.value += 1
+          }
+        }
+      } catch (error) {
+        console.error('收藏操作失败:', error)
+      }
+    }
+
+    // 页面加载时检查收藏状态
+    onMounted(() => {
+      checkFavoriteStatus()
+    })
+
+    // 监听视频ID变化，更新收藏状态
+    watch(() => route.params.id, (newId) => {
+      if (newId) {
+        checkFavoriteStatus()
+      }
+    })
 
     return { 
       videoRef,
@@ -270,7 +449,10 @@ export default {
       handleTouchStart,
       handleTouchEnd,
       setupVideoEventListeners,
-      removeFileExtension
+      removeFileExtension,
+      isFavorited,
+      favoriteCount,
+      toggleFavorite
     }
   }
 }
@@ -377,6 +559,71 @@ export default {
 
 .slide-leave-to {
   transform: translateY(calc(var(--slide-direction, 100%) * -1));
+}
+
+/* 右侧操作栏样式 */
+.right-action-bar {
+  position: absolute;
+  right: 16px;
+  bottom: 120px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.action-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+}
+
+.action-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s;
+}
+
+.action-button:hover .action-icon {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.favorite-icon {
+  width: 24px;
+  height: 24px;
+  transition: all 0.3s ease;
+}
+
+.favorite-icon.filled {
+  color: #ff6b81;
+  filter: drop-shadow(0 2px 4px rgba(255, 107, 129, 0.3));
+}
+
+.favorite-icon.outline {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.action-button:hover .favorite-icon.outline {
+  color: rgba(255, 255, 255, 1);
+  transform: scale(1.1);
+}
+
+.action-button:hover .favorite-icon.filled {
+  transform: scale(1.1);
+  filter: drop-shadow(0 3px 6px rgba(255, 107, 129, 0.5));
+}
+
+.action-count {
+  color: white;
+  font-size: 0.9rem;
+  margin-top: 4px;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
 }
 
 /* 滑动提示样式 */
