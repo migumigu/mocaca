@@ -31,7 +31,7 @@
         ></video>
         
         <div class="video-info">
-          <div class="video-title">{{ currentVideo.filename }}</div>
+          <div class="video-title">{{ removeFileExtension(currentVideo.filename) }}</div>
         </div>
         
         <!-- 加载指示器 -->
@@ -251,6 +251,11 @@ export default {
       }
     }
 
+    // 去除文件后缀名
+    const removeFileExtension = (filename) => {
+      return filename.replace(/\.[^/.]+$/, "")
+    }
+
     return { 
       videoRef,
       isPlaying,
@@ -263,7 +268,8 @@ export default {
       goBack,
       handleTouchStart,
       handleTouchEnd,
-      setupVideoEventListeners
+      setupVideoEventListeners,
+      removeFileExtension
     }
   }
 }
