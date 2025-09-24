@@ -62,6 +62,18 @@
               </svg>
             </div>
           </div>
+
+          <!-- 讨厌按钮 -->
+          <div class="action-button" @click.stop="toggleDislike">
+            <div class="action-icon">
+              <svg v-if="isDisliked" class="dislike-icon filled" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 15h-4v4h-2v-4H9l3.5-3.5L19 15zm-8-9h4V2h2v4h4l-3.5 3.5L11 6z"/>
+              </svg>
+              <svg v-else class="dislike-icon outline" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 15h-4v4h-2v-4H9l3.5-3.5L19 15zm-8-9h4V2h2v4h4l-3.5 3.5L11 6z"/>
+              </svg>
+            </div>
+          </div>
         </div>
       </div>
     </transition>
@@ -422,6 +434,10 @@ export default {
     const favoriteCount = ref(0)
     const currentUser = ref(null)
 
+    // 讨厌功能相关状态
+    const isDisliked = ref(false)
+    const dislikeCount = ref(0)
+
     const getBaseUrl = () => {
       return import.meta.env.DEV 
         ? '/api' 
@@ -446,6 +462,27 @@ export default {
         }
       } catch (error) {
         console.error('检查收藏状态失败:', error)
+      }
+    }
+
+    // 检查讨厌状态
+    const checkDislikeStatus = async () => {
+      const savedUser = localStorage.getItem('currentUser')
+      if (!savedUser) return
+      
+      currentUser.value = JSON.parse(savedUser)
+      const userId = currentUser.value.id
+      const videoId = route.params.id
+
+      try {
+        const baseUrl = getBaseUrl()
+        const res = await fetch(`${baseUrl}/dislikes/check?user_id=${userId}&video_id=${videoId}`)
+        if (res.ok) {
+          const data = await res.json()
+          isDisliked.value = data.is_disliked
+        }
+      } catch (error) {
+        console.error('检查讨厌状态失败:', error)
       }
     }
 
@@ -495,15 +532,63 @@ export default {
       }
     }
 
-    // 页面加载时检查收藏状态
+    // 切换讨厌状态
+    const toggleDislike = async () => {
+      const savedUser = localStorage.getItem('currentUser')
+      if (!savedUser) {
+        alert('请先登录后再操作')
+        return
+      }
+
+      currentUser.value = JSON.parse(savedUser)
+      const userId = currentUser.value.id
+      const videoId = route.params.id
+
+      try {
+        const baseUrl = getBaseUrl()
+        
+        if (isDisliked.value) {
+          // 取消讨厌
+          const res = await fetch(`${baseUrl}/dislikes?user_id=${userId}&video_id=${videoId}`, {
+            method: 'DELETE'
+          })
+          if (res.ok) {
+            isDisliked.value = false
+            dislikeCount.value = Math.max(0, dislikeCount.value - 1)
+          }
+        } else {
+          // 添加讨厌
+          const res = await fetch(`${baseUrl}/dislikes`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              user_id: userId,
+              video_id: videoId
+            })
+          })
+          if (res.ok) {
+            isDisliked.value = true
+            dislikeCount.value += 1
+          }
+        }
+      } catch (error) {
+        console.error('讨厌操作失败:', error)
+      }
+    }
+
+    // 页面加载时检查收藏和讨厌状态
     onMounted(() => {
       checkFavoriteStatus()
+      checkDislikeStatus()
     })
 
-    // 监听视频ID变化，更新收藏状态
+    // 监听视频ID变化，更新收藏和讨厌状态
     watch(() => route.params.id, (newId) => {
       if (newId) {
         checkFavoriteStatus()
+        checkDislikeStatus()
       }
     })
 
@@ -523,7 +608,10 @@ export default {
       removeFileExtension,
       isFavorited,
       favoriteCount,
-      toggleFavorite
+      toggleFavorite,
+      isDisliked,
+      dislikeCount,
+      toggleDislike
     }
   }
 }
@@ -688,6 +776,32 @@ export default {
 .action-button:hover .favorite-icon.filled {
   transform: scale(1.1);
   filter: drop-shadow(0 3px 6px rgba(255, 107, 129, 0.5));
+}
+
+/* 讨厌按钮样式 */
+.dislike-icon {
+  width: 24px;
+  height: 24px;
+  transition: all 0.3s ease;
+}
+
+.dislike-icon.filled {
+  color: #ff4757;
+  filter: drop-shadow(0 2px 4px rgba(255, 71, 87, 0.3));
+}
+
+.dislike-icon.outline {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.action-button:hover .dislike-icon.outline {
+  color: rgba(255, 255, 255, 1);
+  transform: scale(1.1);
+}
+
+.action-button:hover .dislike-icon.filled {
+  transform: scale(1.1);
+  filter: drop-shadow(0 3px 6px rgba(255, 71, 87, 0.5));
 }
 
 .action-count {

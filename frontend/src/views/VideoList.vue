@@ -168,7 +168,15 @@ export default {
           ? '/api' 
           : `${window.location.protocol}//${window.location.hostname}:5003/api`;
         
+        // 获取当前用户ID，用于过滤讨厌的视频
+        const savedUser = localStorage.getItem('currentUser')
+        const user_id = savedUser ? JSON.parse(savedUser).id : null
+        
         let apiUrl = `${baseUrl}/videos?page=${page.value}`
+        
+        if (user_id) {
+          apiUrl += `&user_id=${user_id}`
+        }
         
         if (activeTab.value === 'random') {
           apiUrl += `&random=true&seed=${randomSeed.value}`

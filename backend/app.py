@@ -43,6 +43,15 @@ class Favorite(db.Model):
     # 唯一约束，防止重复收藏
     __table_args__ = (db.UniqueConstraint('user_id', 'video_id', name='_user_video_uc'),)
 
+class Dislike(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    video_id = db.Column(db.Integer, db.ForeignKey('video.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # 唯一约束，防止重复讨厌
+    __table_args__ = (db.UniqueConstraint('user_id', 'video_id', name='_user_video_dislike_uc'),)
+
 # 配置媒体文件路径
 MEDIA_FOLDER = os.path.join(os.path.dirname(__file__), '../media')
 THUMBNAIL_FOLDER = os.path.join(os.path.dirname(__file__), '../thumbnails')
@@ -269,11 +278,12 @@ def upload_thumbnail(video_id):
 # 修改视频列表API，返回缩略图URL
 @app.route('/api/videos')
 def list_videos():
-    """获取视频列表（支持分页和随机排序）"""
+    """获取视频列表（支持分页和随机排序，排除讨厌视频）"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     random_mode = request.args.get('random', 'false').lower() == 'true'
     seed = request.args.get('seed', type=int)
+    user_id = request.args.get('user_id', type=int)
     
     if random_mode:
         # 使用种子确保随机列表的一致性
@@ -282,8 +292,16 @@ def list_videos():
         else:
             random.seed()  # 使用系统时间作为种子
         
-        # 获取所有视频ID
-        all_videos = Video.query.with_entities(Video.id).all()
+        # 获取所有视频ID，排除用户讨厌的视频
+        if user_id:
+            # 获取用户讨厌的视频ID列表
+            disliked_videos = Dislike.query.filter_by(user_id=user_id).with_entities(Dislike.video_id).all()
+            disliked_ids = [d.video_id for d in disliked_videos]
+            # 排除讨厌的视频
+            all_videos = Video.query.filter(~Video.id.in_(disliked_ids)).with_entities(Video.id).all()
+        else:
+            all_videos = Video.query.with_entities(Video.id).all()
+        
         all_video_ids = [v.id for v in all_videos]
         
         # 随机打乱视频ID顺序
@@ -316,8 +334,17 @@ def list_videos():
             'total': total_videos
         })
     else:
-        # 默认按ID顺序排序（最新在前）
-        pagination = Video.query.order_by(Video.id.desc()).paginate(
+        # 默认按ID顺序排序（最新在前），排除用户讨厌的视频
+        if user_id:
+            # 获取用户讨厌的视频ID列表
+            disliked_videos = Dislike.query.filter_by(user_id=user_id).with_entities(Dislike.video_id).all()
+            disliked_ids = [d.video_id for d in disliked_videos]
+            # 排除讨厌的视频
+            query = Video.query.filter(~Video.id.in_(disliked_ids)).order_by(Video.id.desc())
+        else:
+            query = Video.query.order_by(Video.id.desc())
+        
+        pagination = query.paginate(
             page=page, 
             per_page=per_page,
             error_out=False
@@ -416,6 +443,71 @@ def check_favorite():
     
     favorite = Favorite.query.filter_by(user_id=user_id, video_id=video_id).first()
     return jsonify({'is_favorited': favorite is not None})
+
+# 讨厌功能API
+@app.route('/api/dislikes', methods=['GET'])
+def get_dislikes():
+    """获取用户的讨厌列表"""
+    user_id = request.args.get('user_id', type=int)
+    if not user_id:
+        return jsonify({'error': '用户ID不能为空'}), 400
+    
+    dislikes = Dislike.query.filter_by(user_id=user_id).all()
+    dislike_videos = []
+    for dislike in dislikes:
+        video = Video.query.get(dislike.video_id)
+        if video:
+            dislike_videos.append({
+                'id': video.id,
+                'filename': video.filename,
+                'thumbnail_url': f'/api/thumbnail/{video.id}' if video.thumbnail_path else None
+            })
+    
+    return jsonify(dislike_videos)
+
+@app.route('/api/dislikes', methods=['POST'])
+def add_dislike():
+    """添加讨厌"""
+    data = request.get_json()
+    if not data or 'user_id' not in data or 'video_id' not in data:
+        return jsonify({'error': '用户ID和视频ID不能为空'}), 400
+    
+    try:
+        dislike = Dislike(user_id=data['user_id'], video_id=data['video_id'])
+        db.session.add(dislike)
+        db.session.commit()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': '讨厌失败，可能已经讨厌过'}), 400
+
+@app.route('/api/dislikes', methods=['DELETE'])
+def remove_dislike():
+    """移除讨厌"""
+    user_id = request.args.get('user_id', type=int)
+    video_id = request.args.get('video_id', type=int)
+    
+    if not user_id or not video_id:
+        return jsonify({'error': '用户ID和视频ID不能为空'}), 400
+    
+    dislike = Dislike.query.filter_by(user_id=user_id, video_id=video_id).first()
+    if dislike:
+        db.session.delete(dislike)
+        db.session.commit()
+        return jsonify({'status': 'success'})
+    return jsonify({'error': '讨厌记录不存在'}), 404
+
+@app.route('/api/dislikes/check', methods=['GET'])
+def check_dislike():
+    """检查是否已讨厌"""
+    user_id = request.args.get('user_id', type=int)
+    video_id = request.args.get('video_id', type=int)
+    
+    if not user_id or not video_id:
+        return jsonify({'error': '用户ID和视频ID不能为空'}), 400
+    
+    dislike = Dislike.query.filter_by(user_id=user_id, video_id=video_id).first()
+    return jsonify({'is_disliked': dislike is not None})
 
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', '5003'))
