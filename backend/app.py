@@ -509,6 +509,56 @@ def check_dislike():
     dislike = Dislike.query.filter_by(user_id=user_id, video_id=video_id).first()
     return jsonify({'is_disliked': dislike is not None})
 
+# 管理员API - 刷新文件列表
+@app.route('/api/admin/refresh-files', methods=['POST'])
+def admin_refresh_files():
+    # 检查用户权限
+    user_id = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not user_id:
+        return jsonify({'error': '未授权'}), 401
+    
+    user = User.query.get(user_id)
+    if not user or not user.is_admin:
+        return jsonify({'error': '权限不足'}), 403
+    
+    try:
+        # 重新扫描媒体目录
+        media_dir = '/Users/yang/Documents/code/mocaca/media'
+        video_files = []
+        
+        for root, dirs, files in os.walk(media_dir):
+            for file in files:
+                if file.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
+                    file_path = os.path.join(root, file)
+                    relative_path = os.path.relpath(file_path, media_dir)
+                    video_files.append({
+                        'filename': file,
+                        'filepath': relative_path,
+                        'directory': root.replace(media_dir, '').lstrip('/')
+                    })
+        
+        # 更新数据库
+        Video.query.delete()  # 清空现有数据
+        
+        for video_data in video_files:
+            video = Video(
+                filename=video_data['filename'],
+                filepath=video_data['filepath'],
+                directory=video_data['directory']
+            )
+            db.session.add(video)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': f'成功更新文件列表，共找到 {len(video_files)} 个视频文件',
+            'file_count': len(video_files)
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'刷新文件列表失败: {str(e)}'}), 500
+
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', '5003'))
     init_db()  # 初始化数据库

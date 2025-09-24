@@ -49,6 +49,24 @@
         </div>
       </div>
 
+      <!-- 管理员设置入口 -->
+      <div class="admin-section" v-if="currentUser.is_admin">
+        <h3>管理员设置</h3>
+        <button @click="showSettings = !showSettings" class="settings-btn">
+          {{ showSettings ? '隐藏设置' : '显示设置' }}
+        </button>
+        
+        <div v-if="showSettings" class="settings-panel">
+          <div class="setting-item">
+            <h4>文件管理</h4>
+            <button @click="refreshFileList" :disabled="refreshing" class="refresh-btn">
+              {{ refreshing ? '刷新中...' : '更新文件列表' }}
+            </button>
+            <p v-if="refreshMessage" class="refresh-message">{{ refreshMessage }}</p>
+          </div>
+        </div>
+      </div>
+
       <button @click="handleLogout" class="logout-btn">
         退出登录
       </button>
@@ -129,6 +147,9 @@ export default {
     const loginError = ref('')
     const dislikes = ref([])
     const dislikesLoading = ref(false)
+    const showSettings = ref(false)
+    const refreshing = ref(false)
+    const refreshMessage = ref('')
 
     const getBaseUrl = () => {
       return import.meta.env.DEV 
@@ -199,6 +220,34 @@ export default {
       })
     }
 
+    const refreshFileList = async () => {
+      refreshing.value = true
+      refreshMessage.value = ''
+      
+      try {
+        const baseUrl = getBaseUrl()
+        const res = await fetch(`${baseUrl}/admin/refresh-files`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.value.id}`
+          }
+        })
+        
+        if (res.ok) {
+          const data = await res.json()
+          refreshMessage.value = data.message || '文件列表更新成功'
+        } else {
+          const errorData = await res.json()
+          refreshMessage.value = errorData.error || '更新失败'
+        }
+      } catch (error) {
+        refreshMessage.value = '网络错误，请重试'
+      } finally {
+        refreshing.value = false
+      }
+    }
+
     onMounted(() => {
       // 检查本地存储是否有登录用户
       const savedUser = localStorage.getItem('currentUser')
@@ -218,7 +267,11 @@ export default {
       handleLogin,
       handleLogout,
       removeFileExtension,
-      openPlayer
+      openPlayer,
+      showSettings,
+      refreshing,
+      refreshMessage,
+      refreshFileList
     }
   }
 }
@@ -361,6 +414,71 @@ export default {
   border: none;
   border-radius: 6px;
   cursor: pointer;
+}
+
+/* 管理员设置样式 */
+.admin-section {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
+  margin-bottom: 15px;
+}
+
+.admin-section h3 {
+  margin: 0 0 10px 0;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.settings-btn {
+  width: 100%;
+  padding: 8px;
+  background: #3498db;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.settings-panel {
+  margin-top: 15px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+
+.setting-item {
+  margin-bottom: 15px;
+}
+
+.setting-item h4 {
+  margin: 0 0 8px 0;
+  color: #555;
+  font-size: 1rem;
+}
+
+.refresh-btn {
+  padding: 8px 15px;
+  background: #27ae60;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.refresh-btn:disabled {
+  background: #95a5a6;
+  cursor: not-allowed;
+}
+
+.refresh-message {
+  margin: 8px 0 0 0;
+  font-size: 0.85rem;
+  color: #666;
+  font-style: italic;
 }
 
 .favorites-section {
