@@ -625,6 +625,33 @@ def admin_delete_all_dislike_content():
         db.session.rollback()
         return jsonify({'error': f'批量删除失败: {str(e)}'}), 500
 
+# 修改密码API
+@app.route('/api/change-password', methods=['POST'])
+def change_password():
+    """修改用户密码"""
+    data = request.get_json()
+    if not data or 'user_id' not in data or 'current_password' not in data or 'new_password' not in data:
+        return jsonify({'error': '用户ID、当前密码和新密码不能为空'}), 400
+    
+    try:
+        user = User.query.get(data['user_id'])
+        if not user:
+            return jsonify({'error': '用户不存在'}), 404
+        
+        # 验证当前密码
+        if user.password != data['current_password']:
+            return jsonify({'error': '当前密码不正确'}), 400
+        
+        # 更新密码
+        user.password = data['new_password']
+        db.session.commit()
+        
+        return jsonify({'status': 'success', 'message': '密码修改成功'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'密码修改失败: {str(e)}'}), 500
+
 # 管理员API - 刷新文件列表
 @app.route('/api/admin/refresh-files', methods=['POST'])
 def admin_refresh_files():

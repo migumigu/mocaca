@@ -66,6 +66,49 @@
           </div>
         </div>
 
+        <!-- 修改密码表单 -->
+        <div class="password-section">
+          <div class="password-header" @click="passwordExpanded = !passwordExpanded">
+            <h4>修改密码</h4>
+            <span class="expand-icon">{{ passwordExpanded ? '−' : '+' }}</span>
+          </div>
+          <div v-if="passwordExpanded" class="password-content">
+            <form @submit.prevent="changePassword" class="password-form">
+              <div class="form-group">
+                <label>当前密码</label>
+                <input
+                  type="password"
+                  v-model="passwordForm.currentPassword"
+                  placeholder="请输入当前密码"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label>新密码</label>
+                <input
+                  type="password"
+                  v-model="passwordForm.newPassword"
+                  placeholder="请输入新密码"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label>确认新密码</label>
+                <input
+                  type="password"
+                  v-model="passwordForm.confirmPassword"
+                  placeholder="请再次输入新密码"
+                  required
+                />
+              </div>
+              <button type="submit" :disabled="changingPassword" class="change-password-btn">
+                {{ changingPassword ? '修改中...' : '修改密码' }}
+              </button>
+              <p v-if="passwordMessage" class="password-message">{{ passwordMessage }}</p>
+            </form>
+          </div>
+        </div>
+
         <button @click="handleLogout" class="logout-btn">
           退出登录
         </button>
@@ -81,7 +124,12 @@
             @click="deleteAllDislikeContent"
             title="一键删除所有讨厌内容"
           >
-            🗑️
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3 6H5H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M10 11V17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M14 11V17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
           </div>
         </div>
         <div v-if="dislikesLoading" class="loading">
@@ -155,8 +203,8 @@
         <div v-if="activeSettingTab === 'system'" class="settings-panel">
           <div class="setting-item">
             <h4>系统设置</h4>
-            <p class="setting-description">系统配置和高级选项</p>
-            <p class="coming-soon">功能开发中...</p>
+            <p class="setting-description">系统管理功能</p>
+            <p class="coming-soon">更多功能开发中...</p>
           </div>
         </div>
       </div>
@@ -208,6 +256,14 @@ export default {
     const activeSettingTab = ref('files')
     const refreshing = ref(false)
     const refreshMessage = ref('')
+    const changingPassword = ref(false)
+    const passwordMessage = ref('')
+    const passwordForm = ref({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    })
+    const passwordExpanded = ref(false)
 
     const getBaseUrl = () => {
       return import.meta.env.DEV 
@@ -286,13 +342,62 @@ export default {
       activeSettingTab.value = tab
     }
 
+    const changePassword = async () => {
+      if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
+        passwordMessage.value = '新密码和确认密码不一致'
+        return
+      }
+      
+      changingPassword.value = true
+      passwordMessage.value = ''
+      
+      try {
+        const baseUrl = getBaseUrl()
+        const res = await fetch(`${baseUrl}/change-password`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            user_id: currentUser.value.id,
+            current_password: passwordForm.value.currentPassword,
+            new_password: passwordForm.value.newPassword
+          })
+        })
+        
+        if (res.ok) {
+          const data = await res.json()
+          passwordMessage.value = data.message || '密码修改成功'
+          // 清空表单
+          passwordForm.value = {
+            currentPassword: '',
+            newPassword: '',
+            confirmPassword: ''
+          }
+        } else {
+          const errorData = await res.json()
+          passwordMessage.value = errorData.error || '密码修改失败'
+        }
+      } catch (error) {
+        passwordMessage.value = '网络错误，请重试'
+      } finally {
+        changingPassword.value = false
+      }
+    }
+
     const deleteAllDislikeContent = async () => {
+      console.log('deleteAllDislikeContent called')
       if (!confirm('确定要删除所有讨厌内容吗？此操作将永久删除相关文件和数据库记录，且不可恢复！')) {
+        console.log('User cancelled deletion')
         return
       }
       
       try {
+        console.log('Starting deletion process')
         const baseUrl = getBaseUrl()
+        console.log('Base URL:', baseUrl)
+        console.log('User ID:', currentUser.value.id)
+        
         const res = await fetch(`${baseUrl}/admin/delete-all-dislike-content`, {
           method: 'DELETE',
           headers: {
@@ -300,6 +405,8 @@ export default {
             'Authorization': `Bearer ${currentUser.value.id}`
           }
         })
+        
+        console.log('Response status:', res.status)
         
         if (res.ok) {
           const data = await res.json()
@@ -363,12 +470,18 @@ export default {
       activeSettingTab,
       refreshing,
       refreshMessage,
+      changingPassword,
+      passwordMessage,
+      passwordForm,
+      passwordExpanded,
       handleLogin,
       handleLogout,
       removeFileExtension,
       openPlayer,
+      deleteAllDislikeContent,
       switchProfileTab,
       switchSettingTab,
+      changePassword,
       refreshFileList
     }
   }
@@ -525,6 +638,44 @@ export default {
   color: #666;
 }
 
+.password-section {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  margin: 20px 0;
+}
+
+.password-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 5px 0;
+}
+
+.password-header h4 {
+  margin: 0;
+  color: #333;
+  font-size: 1rem;
+}
+
+.expand-icon {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #666;
+  transition: transform 0.3s ease;
+}
+
+.password-header:hover .expand-icon {
+  color: #ff6b81;
+}
+
+.password-content {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid #e0e0e0;
+}
+
 .logout-btn {
   width: 100%;
   padding: 10px;
@@ -561,6 +712,11 @@ export default {
   border-radius: 50%;
   transition: all 0.3s ease;
   background: rgba(255, 107, 129, 0.1);
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .delete-all-icon:hover {
@@ -739,6 +895,59 @@ export default {
 }
 
 .refresh-message {
+  margin: 8px 0 0 0;
+  font-size: 0.85rem;
+  color: #666;
+  font-style: italic;
+}
+
+.password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.password-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.password-form label {
+  font-size: 0.9rem;
+  color: #555;
+  font-weight: 500;
+}
+
+.password-form input {
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.change-password-btn {
+  padding: 10px;
+  background: #ff6b81;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.change-password-btn:hover:not(:disabled) {
+  background: #ff5570;
+}
+
+.change-password-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.password-message {
   margin: 8px 0 0 0;
   font-size: 0.85rem;
   color: #666;
