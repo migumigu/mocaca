@@ -3,6 +3,7 @@ import VideoList from '../views/VideoList.vue'
 import VideoPlayer from '../views/VideoPlayer.vue'
 import Profile from '../views/Profile.vue'
 import Favorites from '../views/Favorites.vue'
+import Directory from '../views/Directory.vue'
 
 const routes = [
   {
@@ -25,6 +26,17 @@ const routes = [
     path: '/favorites',
     name: 'Favorites',
     component: Favorites
+  },
+  {
+    path: '/directory',
+    name: 'Directory',
+    component: Directory
+  },
+  {
+    path: '/directory/:path*',
+    name: 'DirectoryPath',
+    component: Directory,
+    props: true
   }
 ]
 

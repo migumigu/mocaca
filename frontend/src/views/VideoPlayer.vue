@@ -128,6 +128,11 @@ export default {
       return route.path.includes('/favorites') || route.query.from === 'favorites'
     })
 
+    // 检查是否从发现页面进入
+    const isFromDirectoryPage = computed(() => {
+      return route.query.from === 'directory'
+    })
+
     // 检查是否在特定播放列表页面
     const isPlaylistPage = computed(() => {
       return playlistType.value === 'latest' || playlistType.value === 'random'
@@ -336,7 +341,24 @@ export default {
       // 根据来源页面决定返回位置
       if (isFavoritesPage.value) {
         router.push('/favorites')
+      } else if (isFromDirectoryPage.value) {
+        // 从发现页面进入，返回到发现页面
+        router.push('/directory')
+      } else if (isPlaylistPage.value) {
+        // 从播放列表进入，返回到相应的播放列表
+        const queryParams = {}
+        if (playlistSeed.value) {
+          queryParams.seed = playlistSeed.value
+        }
+        router.push({ 
+          path: '/', 
+          query: { 
+            playlistType: playlistType.value,
+            ...queryParams
+          } 
+        })
       } else {
+        // 默认返回到首页（最新列表）
         router.push('/')
       }
     }

@@ -69,7 +69,7 @@
 
 <script>
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import NavIcons from '../components/icons/NavIcons.vue'
 
 export default {
@@ -79,6 +79,7 @@ export default {
   setup() {
     const videos = ref([])
     const router = useRouter()
+    const route = useRoute()
     const videoGrid = ref(null)
     const loading = ref(false)
     const hasMore = ref(true)
@@ -114,6 +115,15 @@ export default {
     }
 
     onMounted(() => {
+      // 检查URL查询参数，设置正确的activeTab
+      if (route.query.playlistType === 'random') {
+        activeTab.value = 'random'
+        currentPlaylistType.value = 'random'
+        if (route.query.seed) {
+          randomSeed.value = parseInt(route.query.seed)
+        }
+      }
+      
       loadVideos()
       
       // 页面加载后，自动为前几个视频生成缩略图

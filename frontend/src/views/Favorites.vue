@@ -6,7 +6,7 @@
 
     <div v-if="!currentUser" class="login-prompt">
       <div class="prompt-content">
-        <div class="prompt-icon">🔒</div>
+        <NavIcons name="lock" class="prompt-icon" />
         <h2>需要登录</h2>
         <p>请先登录以查看您的收藏</p>
         <button @click="goToLogin" class="login-button">
@@ -22,7 +22,7 @@
       </div>
 
       <div v-else-if="favorites.length === 0" class="empty-favorites">
-        <div class="empty-icon">⭐</div>
+        <NavIcons name="star" class="empty-icon" />
         <h2>暂无收藏</h2>
         <p>开始收藏您喜欢的视频吧</p>
       </div>
