@@ -1,95 +1,23 @@
-# IDE and editor files
+# 开发环境文件
+.env
+*.local
+*.log
+*.tmp
+*.swp
+
+# 依赖目录
+node_modules/
+venv/
+__pycache__/
+
+# 媒体文件
+media/
+thumbnails/
+
+# 系统文件
 .DS_Store
 .idea/
-.vscode/
-*.swp
-*.swo
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
+# 编译输出
+dist/
 build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-venv/
-env/
-ENV/
-env.bak/
-venv.bak/
-
-# Node.js
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-.pnp.js
-
-# Testing
-coverage/
-.nyc_output/
-
-# Logs
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-.pnpm-debug.log*
-
-# Dependency directories
-jspm_packages/
-
-# Optional npm cache directory
-.npm
-
-# Optional eslint cache
-.eslintcache
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# dotenv environment variables file
-.env
-.env.test
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Vite
-dist/
-dist-ssr/
-*.local
-
-# Debug log
-npm-debug.log*
-
-# Local development
-*.local
-
-# Media files
-media/

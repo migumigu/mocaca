@@ -1,0 +1,27 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      platforms: [linux/amd64, linux/arm64]
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      platforms: [linux/amd64, linux/arm64]
+    ports:
+      - "5003:5003"
+    volumes:
+      - ./media:/app/media
+      - ./thumbnails:/app/thumbnails
+    environment:
+      - MEDIA_FOLDER=/app/media
+      - THUMBNAIL_FOLDER=/app/thumbnails
+    restart: unless-stopped
