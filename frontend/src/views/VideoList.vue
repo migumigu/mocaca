@@ -7,7 +7,7 @@
           最新
         </div>
         <div class="sub-nav-item" :class="{ active: activeTab === 'random' }" @click="switchTab('random')">
-          随机
+          发现
         </div>
       </div>
       
@@ -270,12 +270,14 @@ export default {
       videoGrid,
       loading,
       hasMore,
+      activeTab,
       handleScroll,
       encodeVideoUrl,
       openPlayer,
       removeFileExtension,
       handleThumbnailLoad,
-      handleThumbnailError
+      handleThumbnailError,
+      switchTab
     }
   }
 }
@@ -299,22 +301,23 @@ export default {
 .sub-nav {
   display: flex;
   justify-content: center;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
   border-bottom: 1px solid #eee;
   background: white;
   position: sticky;
   top: 0;
   z-index: 10;
-  padding: 10px 0;
+  padding: 6px 0;
 }
 
 .sub-nav-item {
-  padding: 8px 20px;
-  margin: 0 10px;
+  padding: 6px 16px;
+  margin: 0 8px;
   cursor: pointer;
-  border-radius: 20px;
+  border-radius: 16px;
   font-weight: 500;
-  transition: all 0.3s ease;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
   color: #666;
 }
 
@@ -339,13 +342,13 @@ export default {
 }
 
 .video-grid-container {
-  padding: 10px;
+  padding: 8px;
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
   flex: 1;
   overflow-y: auto;
-  padding-bottom: 60px; /* 为底部导航栏留出空间 */
+  padding-bottom: 56px; /* 为底部导航栏留出空间 */
   box-sizing: border-box;
   /* 隐藏滚动条但保持滚动功能 */
   scrollbar-width: none; /* Firefox */
@@ -365,8 +368,8 @@ h1 {
 
 .video-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
   width: 100%;
 }
 
