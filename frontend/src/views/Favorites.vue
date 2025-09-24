@@ -58,7 +58,7 @@
         <NavIcons name="home" />
         <span>首页</span>
       </div>
-      <div class="nav-item">
+      <div class="nav-item" @click="$router.push('/directory')">
         <NavIcons name="folder" />
         <span>目录</span>
       </div>

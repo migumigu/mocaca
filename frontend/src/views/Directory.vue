@@ -29,7 +29,7 @@
         <NavIcons name="home" :active="$route.path === '/'" />
         <span>首页</span>
       </div>
-      <div class="nav-item active">
+      <div class="nav-item active" @click="$router.push('/directory')">
         <NavIcons name="folder" :active="true" />
         <span>目录</span>
       </div>
