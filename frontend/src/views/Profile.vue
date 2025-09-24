@@ -89,20 +89,16 @@
 
     <!-- 底部导航栏 -->
     <div class="bottom-nav">
-      <div class="nav-item" @click="$router.push('/')">
-        <i class="nav-icon">🏠</i>
+      <div class="nav-item" :class="{ active: $route.path === '/' }" @click="$router.push('/')">
+        <NavIcons name="home" :active="$route.path === '/'" />
         <span>首页</span>
       </div>
-      <div class="nav-item">
-        <i class="nav-icon">📁</i>
-        <span>目录</span>
-      </div>
-      <div class="nav-item">
-        <i class="nav-icon">⭐</i>
+      <div class="nav-item" :class="{ active: $route.path === '/favorites' }" @click="$router.push('/favorites')">
+        <NavIcons name="favorite" :active="$route.path === '/favorites'" />
         <span>收藏</span>
       </div>
       <div class="nav-item active">
-        <i class="nav-icon">👤</i>
+        <NavIcons name="user" :active="true" />
         <span>我</span>
       </div>
     </div>
@@ -112,8 +108,12 @@
 <script>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import NavIcons from '../components/icons/NavIcons.vue'
 
 export default {
+  components: {
+    NavIcons
+  },
   setup() {
     const router = useRouter()
     const currentUser = ref(null)
@@ -483,8 +483,22 @@ export default {
 }
 
 .nav-icon {
-  font-size: 1.2rem;
+  width: 24px;
+  height: 24px;
   margin-bottom: 2px;
+  transition: all 0.3s ease;
+}
+
+.nav-item.active .nav-icon {
+  color: #ff6b81;
+}
+
+.nav-item:not(.active) .nav-icon {
+  color: #666;
+}
+
+.nav-item:hover .nav-icon {
+  transform: scale(1.1);
 }
 
 .nav-item span {
