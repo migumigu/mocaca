@@ -66,22 +66,22 @@
         <div 
           v-for="video in dislikes" 
           :key="video.id"
-          class="video-card"
+          class="small-video-card"
           @click="openPlayer(video)"
         >
-          <div class="video-thumbnail">
+          <div class="small-video-thumbnail">
             <img 
               v-if="video.thumbnail_url"
-              class="thumbnail-image"
+              class="small-thumbnail-image"
               :src="video.thumbnail_url"
               :alt="removeFileExtension(video.filename)"
             />
-            <div v-else class="thumbnail-placeholder">
-              <div class="loading-spinner"></div>
+            <div v-else class="small-thumbnail-placeholder">
+              <div class="small-loading-spinner"></div>
             </div>
-            <div class="video-title-overlay">
-              {{ removeFileExtension(video.filename) }}
-            </div>
+          </div>
+          <div class="small-video-title">
+            {{ removeFileExtension(video.filename) }}
           </div>
         </div>
       </div>
@@ -377,32 +377,33 @@ export default {
   color: #666;
 }
 
-.favorites-grid {
+.dislikes-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 8px;
 }
 
-.video-card {
-  border-radius: 8px;
+.small-video-card {
+  border-radius: 6px;
   overflow: hidden;
-  position: relative;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
   cursor: pointer;
   transition: transform 0.2s;
+  background: white;
 }
 
-.video-card:hover {
-  transform: scale(1.03);
+.small-video-card:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
-.video-thumbnail {
+.small-video-thumbnail {
   position: relative;
-  padding-top: 133%;
+  padding-top: 100%; /* 正方形比例 */
   overflow: hidden;
 }
 
-.thumbnail-image {
+.small-thumbnail-image {
   position: absolute;
   top: 0;
   left: 0;
@@ -411,7 +412,7 @@ export default {
   object-fit: cover;
 }
 
-.thumbnail-placeholder {
+.small-thumbnail-placeholder {
   position: absolute;
   top: 0;
   left: 0;
@@ -420,35 +421,32 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #f0f0f0;
+  background-color: #f8f9fa;
 }
 
-.loading-spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #ccc;
-  border-top: 2px solid #ff6b81;
+.small-loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e9ecef;
+  border-top: 2px solid #6c757d;
   border-radius: 50%;
   animation: spin 1s linear infinite;
+}
+
+.small-video-title {
+  padding: 4px 2px;
+  font-size: 0.65rem;
+  color: #495057;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
 }
 
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
-}
-
-.video-title-overlay {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 6px;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
-  color: white;
-  font-size: 0.7rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* 底部导航栏样式 */
