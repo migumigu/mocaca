@@ -44,8 +44,8 @@
 
       <div class="stats-section">
         <div class="stat-item">
-          <span class="stat-number">{{ favorites.length }}</span>
-          <span class="stat-label">收藏</span>
+          <span class="stat-number">{{ dislikes.length }}</span>
+          <span class="stat-label">讨厌</span>
         </div>
       </div>
 
@@ -54,17 +54,17 @@
       </button>
     </div>
 
-    <div class="favorites-section" v-if="currentUser">
-      <h3>我的收藏</h3>
-      <div v-if="favoritesLoading" class="loading">
+    <div class="dislikes-section" v-if="currentUser">
+      <h3>我的讨厌</h3>
+      <div v-if="dislikesLoading" class="loading">
         加载中...
       </div>
-      <div v-else-if="favorites.length === 0" class="empty-favorites">
-        <p>暂无收藏</p>
+      <div v-else-if="dislikes.length === 0" class="empty-dislikes">
+        <p>暂无讨厌</p>
       </div>
-      <div v-else class="favorites-grid">
+      <div v-else class="dislikes-grid">
         <div 
-          v-for="video in favorites" 
+          v-for="video in dislikes" 
           :key="video.id"
           class="video-card"
           @click="openPlayer(video)"
@@ -123,8 +123,8 @@ export default {
     })
     const loggingIn = ref(false)
     const loginError = ref('')
-    const favorites = ref([])
-    const favoritesLoading = ref(false)
+    const dislikes = ref([])
+    const dislikesLoading = ref(false)
 
     const getBaseUrl = () => {
       return import.meta.env.DEV 
@@ -150,7 +150,7 @@ export default {
         if (res.ok) {
           currentUser.value = data.user
           localStorage.setItem('currentUser', JSON.stringify(data.user))
-          await loadFavorites()
+          await loadDislikes()
         } else {
           loginError.value = data.error || '登录失败'
         }
@@ -164,23 +164,23 @@ export default {
     const handleLogout = () => {
       currentUser.value = null
       localStorage.removeItem('currentUser')
-      favorites.value = []
+      dislikes.value = []
     }
 
-    const loadFavorites = async () => {
+    const loadDislikes = async () => {
       if (!currentUser.value) return
       
-      favoritesLoading.value = true
+      dislikesLoading.value = true
       try {
         const baseUrl = getBaseUrl()
-        const res = await fetch(`${baseUrl}/favorites?user_id=${currentUser.value.id}`)
+        const res = await fetch(`${baseUrl}/dislikes?user_id=${currentUser.value.id}`)
         if (res.ok) {
-          favorites.value = await res.json()
+          dislikes.value = await res.json()
         }
       } catch (error) {
-        console.error('获取收藏列表失败:', error)
+        console.error('获取讨厌列表失败:', error)
       } finally {
-        favoritesLoading.value = false
+        dislikesLoading.value = false
       }
     }
 
@@ -200,7 +200,7 @@ export default {
       const savedUser = localStorage.getItem('currentUser')
       if (savedUser) {
         currentUser.value = JSON.parse(savedUser)
-        loadFavorites()
+        loadDislikes()
       }
     })
 
@@ -209,8 +209,8 @@ export default {
       loginForm,
       loggingIn,
       loginError,
-      favorites,
-      favoritesLoading,
+      dislikes,
+      dislikesLoading,
       handleLogin,
       handleLogout,
       removeFileExtension,
