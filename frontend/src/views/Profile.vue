@@ -52,17 +52,43 @@
       <!-- 管理员设置入口 -->
       <div class="admin-section" v-if="currentUser.is_admin">
         <h3>管理员设置</h3>
-        <button @click="showSettings = !showSettings" class="settings-btn">
-          {{ showSettings ? '隐藏设置' : '显示设置' }}
-        </button>
         
-        <div v-if="showSettings" class="settings-panel">
+        <!-- 设置子导航 -->
+        <div class="settings-nav">
+          <div 
+            class="nav-tab" 
+            :class="{ active: activeSettingTab === 'files' }"
+            @click="switchSettingTab('files')"
+          >
+            文件管理
+          </div>
+          <div 
+            class="nav-tab" 
+            :class="{ active: activeSettingTab === 'system' }"
+            @click="switchSettingTab('system')"
+          >
+            系统设置
+          </div>
+        </div>
+        
+        <!-- 文件管理设置 -->
+        <div v-if="activeSettingTab === 'files'" class="settings-panel">
           <div class="setting-item">
             <h4>文件管理</h4>
+            <p class="setting-description">扫描媒体目录并更新文件列表</p>
             <button @click="refreshFileList" :disabled="refreshing" class="refresh-btn">
               {{ refreshing ? '刷新中...' : '更新文件列表' }}
             </button>
             <p v-if="refreshMessage" class="refresh-message">{{ refreshMessage }}</p>
+          </div>
+        </div>
+        
+        <!-- 系统设置 -->
+        <div v-if="activeSettingTab === 'system'" class="settings-panel">
+          <div class="setting-item">
+            <h4>系统设置</h4>
+            <p class="setting-description">系统配置和高级选项</p>
+            <p class="coming-soon">功能开发中...</p>
           </div>
         </div>
       </div>
@@ -147,7 +173,7 @@ export default {
     const loginError = ref('')
     const dislikes = ref([])
     const dislikesLoading = ref(false)
-    const showSettings = ref(false)
+    const activeSettingTab = ref('files')
     const refreshing = ref(false)
     const refreshMessage = ref('')
 
@@ -220,6 +246,10 @@ export default {
       })
     }
 
+    const switchSettingTab = (tab) => {
+      activeSettingTab.value = tab
+    }
+
     const refreshFileList = async () => {
       refreshing.value = true
       refreshMessage.value = ''
@@ -268,9 +298,10 @@ export default {
       handleLogout,
       removeFileExtension,
       openPlayer,
-      showSettings,
+      activeSettingTab,
       refreshing,
       refreshMessage,
+      switchSettingTab,
       refreshFileList
     }
   }
@@ -426,27 +457,47 @@ export default {
 }
 
 .admin-section h3 {
-  margin: 0 0 10px 0;
+  margin: 0 0 15px 0;
   color: #333;
   font-size: 1.1rem;
+  text-align: center;
 }
 
-.settings-btn {
-  width: 100%;
-  padding: 8px;
-  background: #3498db;
-  color: white;
-  border: none;
-  border-radius: 4px;
+/* 设置子导航样式 */
+.settings-nav {
+  display: flex;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 4px;
+  margin-bottom: 15px;
+}
+
+.nav-tab {
+  flex: 1;
+  text-align: center;
+  padding: 8px 12px;
   cursor: pointer;
+  border-radius: 6px;
   font-size: 0.9rem;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.3s ease;
+}
+
+.nav-tab:hover {
+  background: rgba(255, 107, 129, 0.1);
+  color: #ff6b81;
+}
+
+.nav-tab.active {
+  background: #ff6b81;
+  color: white;
 }
 
 .settings-panel {
-  margin-top: 15px;
   padding: 15px;
   background: #f8f9fa;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .setting-item {
@@ -459,6 +510,13 @@ export default {
   font-size: 1rem;
 }
 
+.setting-description {
+  margin: 0 0 12px 0;
+  font-size: 0.85rem;
+  color: #666;
+  line-height: 1.4;
+}
+
 .refresh-btn {
   padding: 8px 15px;
   background: #27ae60;
@@ -467,6 +525,11 @@ export default {
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.9rem;
+  transition: background 0.3s ease;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: #219a52;
 }
 
 .refresh-btn:disabled {
@@ -478,6 +541,14 @@ export default {
   margin: 8px 0 0 0;
   font-size: 0.85rem;
   color: #666;
+  font-style: italic;
+}
+
+.coming-soon {
+  margin: 15px 0 0 0;
+  font-size: 0.9rem;
+  color: #888;
+  text-align: center;
   font-style: italic;
 }
 
