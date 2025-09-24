@@ -1,56 +1,113 @@
 <template>
   <div class="profile-container">
-    <div class="profile-header">
-      <h1>我</h1>
+    <!-- 顶部导航栏 -->
+    <div class="profile-nav">
+      <div 
+        class="nav-tab" 
+        :class="{ active: activeProfileTab === 'profile' }"
+        @click="switchProfileTab('profile')"
+      >
+        我
+      </div>
+      <div 
+        class="nav-tab" 
+        :class="{ active: activeProfileTab === 'settings' }"
+        @click="switchProfileTab('settings')"
+        v-if="currentUser && currentUser.is_admin"
+      >
+        设置
+      </div>
     </div>
 
-    <div class="login-section" v-if="!currentUser">
-      <h2>登录</h2>
-      <form @submit.prevent="handleLogin" class="login-form">
-        <div class="form-group">
-          <input
-            type="text"
-            v-model="loginForm.username"
-            placeholder="用户名"
-            required
-          />
+    <!-- 个人资料页面 -->
+    <div v-if="activeProfileTab === 'profile'">
+      <div class="login-section" v-if="!currentUser">
+        <h2>登录</h2>
+        <form @submit.prevent="handleLogin" class="login-form">
+          <div class="form-group">
+            <input
+              type="text"
+              v-model="loginForm.username"
+              placeholder="用户名"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <input
+              type="password"
+              v-model="loginForm.password"
+              placeholder="密码"
+              required
+            />
+          </div>
+          <button type="submit" :disabled="loggingIn">
+            {{ loggingIn ? '登录中...' : '登录' }}
+          </button>
+        </form>
+        <p v-if="loginError" class="error-message">{{ loginError }}</p>
+      </div>
+
+      <div class="user-info" v-else>
+        <div class="user-card">
+          <div class="user-avatar">
+            👤
+          </div>
+          <div class="user-details">
+            <h2>{{ currentUser.username }}</h2>
+            <p v-if="currentUser.is_admin" class="admin-badge">管理员</p>
+            <p class="user-id">ID: {{ currentUser.id }}</p>
+          </div>
         </div>
-        <div class="form-group">
-          <input
-            type="password"
-            v-model="loginForm.password"
-            placeholder="密码"
-            required
-          />
+
+        <div class="stats-section">
+          <div class="stat-item">
+            <span class="stat-number">{{ dislikes.length }}</span>
+            <span class="stat-label">讨厌</span>
+          </div>
         </div>
-        <button type="submit" :disabled="loggingIn">
-          {{ loggingIn ? '登录中...' : '登录' }}
+
+        <button @click="handleLogout" class="logout-btn">
+          退出登录
         </button>
-      </form>
-      <p v-if="loginError" class="error-message">{{ loginError }}</p>
+      </div>
+
+      <div class="dislikes-section" v-if="currentUser">
+        <h3>我的讨厌</h3>
+        <div v-if="dislikesLoading" class="loading">
+          加载中...
+        </div>
+        <div v-else-if="dislikes.length === 0" class="empty-dislikes">
+          <p>暂无讨厌</p>
+        </div>
+        <div v-else class="dislikes-grid">
+          <div 
+            v-for="video in dislikes" 
+            :key="video.id"
+            class="small-video-card"
+            @click="openPlayer(video)"
+          >
+            <div class="small-video-thumbnail">
+              <img 
+                v-if="video.thumbnail_url"
+                class="small-thumbnail-image"
+                :src="video.thumbnail_url"
+                :alt="removeFileExtension(video.filename)"
+              />
+              <div v-else class="small-thumbnail-placeholder">
+                <div class="small-loading-spinner"></div>
+              </div>
+            </div>
+            <div class="small-video-title">
+              {{ removeFileExtension(video.filename) }}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="user-info" v-else>
-      <div class="user-card">
-        <div class="user-avatar">
-          👤
-        </div>
-        <div class="user-details">
-          <h2>{{ currentUser.username }}</h2>
-          <p v-if="currentUser.is_admin" class="admin-badge">管理员</p>
-          <p class="user-id">ID: {{ currentUser.id }}</p>
-        </div>
-      </div>
-
-      <div class="stats-section">
-        <div class="stat-item">
-          <span class="stat-number">{{ dislikes.length }}</span>
-          <span class="stat-label">讨厌</span>
-        </div>
-      </div>
-
-      <!-- 管理员设置入口 -->
-      <div class="admin-section" v-if="currentUser.is_admin">
+    <!-- 设置页面 -->
+    <div v-if="activeProfileTab === 'settings' && currentUser && currentUser.is_admin">
+      <div class="admin-section">
         <h3>管理员设置</h3>
         
         <!-- 设置子导航 -->
@@ -89,43 +146,6 @@
             <h4>系统设置</h4>
             <p class="setting-description">系统配置和高级选项</p>
             <p class="coming-soon">功能开发中...</p>
-          </div>
-        </div>
-      </div>
-
-      <button @click="handleLogout" class="logout-btn">
-        退出登录
-      </button>
-    </div>
-
-    <div class="dislikes-section" v-if="currentUser">
-      <h3>我的讨厌</h3>
-      <div v-if="dislikesLoading" class="loading">
-        加载中...
-      </div>
-      <div v-else-if="dislikes.length === 0" class="empty-dislikes">
-        <p>暂无讨厌</p>
-      </div>
-      <div v-else class="dislikes-grid">
-        <div 
-          v-for="video in dislikes" 
-          :key="video.id"
-          class="small-video-card"
-          @click="openPlayer(video)"
-        >
-          <div class="small-video-thumbnail">
-            <img 
-              v-if="video.thumbnail_url"
-              class="small-thumbnail-image"
-              :src="video.thumbnail_url"
-              :alt="removeFileExtension(video.filename)"
-            />
-            <div v-else class="small-thumbnail-placeholder">
-              <div class="small-loading-spinner"></div>
-            </div>
-          </div>
-          <div class="small-video-title">
-            {{ removeFileExtension(video.filename) }}
           </div>
         </div>
       </div>
@@ -173,6 +193,7 @@ export default {
     const loginError = ref('')
     const dislikes = ref([])
     const dislikesLoading = ref(false)
+    const activeProfileTab = ref('profile')
     const activeSettingTab = ref('files')
     const refreshing = ref(false)
     const refreshMessage = ref('')
@@ -246,6 +267,10 @@ export default {
       })
     }
 
+    const switchProfileTab = (tab) => {
+      activeProfileTab.value = tab
+    }
+
     const switchSettingTab = (tab) => {
       activeSettingTab.value = tab
     }
@@ -294,13 +319,15 @@ export default {
       loginError,
       dislikes,
       dislikesLoading,
+      activeProfileTab,
+      activeSettingTab,
+      refreshing,
+      refreshMessage,
       handleLogin,
       handleLogout,
       removeFileExtension,
       openPlayer,
-      activeSettingTab,
-      refreshing,
-      refreshMessage,
+      switchProfileTab,
       switchSettingTab,
       refreshFileList
     }
@@ -317,14 +344,35 @@ export default {
   padding-bottom: 70px;
 }
 
-.profile-header {
-  text-align: center;
-  margin-bottom: 30px;
+/* 顶部导航栏样式 */
+.profile-nav {
+  display: flex;
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 6px;
+  margin-bottom: 20px;
 }
 
-.profile-header h1 {
-  font-size: 1.8rem;
-  color: #333;
+.profile-nav .nav-tab {
+  flex: 1;
+  text-align: center;
+  padding: 10px 16px;
+  cursor: pointer;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.3s ease;
+}
+
+.profile-nav .nav-tab:hover {
+  background: rgba(255, 107, 129, 0.1);
+  color: #ff6b81;
+}
+
+.profile-nav .nav-tab.active {
+  background: #ff6b81;
+  color: white;
 }
 
 .login-section {
@@ -447,13 +495,100 @@ export default {
   cursor: pointer;
 }
 
+.dislikes-section {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.dislikes-section h3 {
+  margin: 0 0 15px 0;
+  color: #333;
+}
+
+.loading, .empty-dislikes {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+.dislikes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 10px;
+}
+
+.small-video-card {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.small-video-card:hover {
+  transform: scale(1.03);
+}
+
+.small-video-thumbnail {
+  position: relative;
+  padding-top: 100%;
+  overflow: hidden;
+}
+
+.small-thumbnail-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.small-thumbnail-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f0f0f0;
+}
+
+.small-loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ccc;
+  border-top: 2px solid #ff6b81;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.small-video-title {
+  padding: 6px 4px;
+  font-size: 0.7rem;
+  color: #333;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* 管理员设置样式 */
 .admin-section {
   background: white;
-  padding: 15px;
-  border-radius: 8px;
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
-  margin-bottom: 15px;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
 }
 
 .admin-section h3 {
@@ -472,7 +607,7 @@ export default {
   margin-bottom: 15px;
 }
 
-.nav-tab {
+.settings-nav .nav-tab {
   flex: 1;
   text-align: center;
   padding: 8px 12px;
@@ -484,12 +619,12 @@ export default {
   transition: all 0.3s ease;
 }
 
-.nav-tab:hover {
+.settings-nav .nav-tab:hover {
   background: rgba(255, 107, 129, 0.1);
   color: #ff6b81;
 }
 
-.nav-tab.active {
+.settings-nav .nav-tab.active {
   background: #ff6b81;
   color: white;
 }
@@ -550,96 +685,6 @@ export default {
   color: #888;
   text-align: center;
   font-style: italic;
-}
-
-.favorites-section {
-  background: white;
-  padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-}
-
-.favorites-section h3 {
-  margin: 0 0 15px 0;
-  color: #333;
-}
-
-.loading, .empty-favorites {
-  text-align: center;
-  padding: 40px;
-  color: #666;
-}
-
-.dislikes-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 8px;
-}
-
-.small-video-card {
-  border-radius: 6px;
-  overflow: hidden;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
-  cursor: pointer;
-  transition: transform 0.2s;
-  background: white;
-}
-
-.small-video-card:hover {
-  transform: scale(1.05);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-}
-
-.small-video-thumbnail {
-  position: relative;
-  padding-top: 100%; /* 正方形比例 */
-  overflow: hidden;
-}
-
-.small-thumbnail-image {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.small-thumbnail-placeholder {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: #f8f9fa;
-}
-
-.small-loading-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid #e9ecef;
-  border-top: 2px solid #6c757d;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-.small-video-title {
-  padding: 4px 2px;
-  font-size: 0.65rem;
-  color: #495057;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
 }
 
 /* 底部导航栏样式 */
