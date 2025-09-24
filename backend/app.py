@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, send_from_directory, request
 from werkzeug.utils import secure_filename
 import os
+import random
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
@@ -268,25 +269,69 @@ def upload_thumbnail(video_id):
 # 修改视频列表API，返回缩略图URL
 @app.route('/api/videos')
 def list_videos():
-    """获取视频列表（支持分页）"""
+    """获取视频列表（支持分页和随机排序）"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
+    random_mode = request.args.get('random', 'false').lower() == 'true'
+    seed = request.args.get('seed', type=int)
     
-    pagination = Video.query.order_by(Video.id).paginate(
-        page=page, 
-        per_page=per_page,
-        error_out=False
-    )
-    
-    return jsonify({
-        'items': [{
-            'id': v.id,
-            'filename': v.filename,
-            'thumbnail_url': f'/api/thumbnail/{v.id}' if v.thumbnail_path else None
-        } for v in pagination.items],
-        'has_next': pagination.has_next,
-        'total': pagination.total
-    })
+    if random_mode:
+        # 使用种子确保随机列表的一致性
+        if seed:
+            random.seed(seed)
+        else:
+            random.seed()  # 使用系统时间作为种子
+        
+        # 获取所有视频ID
+        all_videos = Video.query.with_entities(Video.id).all()
+        all_video_ids = [v.id for v in all_videos]
+        
+        # 随机打乱视频ID顺序
+        random.shuffle(all_video_ids)
+        
+        # 计算分页
+        total_videos = len(all_video_ids)
+        total_pages = (total_videos + per_page - 1) // per_page
+        has_next = page < total_pages
+        
+        # 获取当前页的视频ID
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        current_page_ids = all_video_ids[start_idx:end_idx]
+        
+        # 获取当前页的视频详情
+        current_videos = Video.query.filter(Video.id.in_(current_page_ids)).all()
+        
+        # 保持随机顺序
+        video_map = {v.id: v for v in current_videos}
+        ordered_videos = [video_map[vid] for vid in current_page_ids if vid in video_map]
+        
+        return jsonify({
+            'items': [{
+                'id': v.id,
+                'filename': v.filename,
+                'thumbnail_url': f'/api/thumbnail/{v.id}' if v.thumbnail_path else None
+            } for v in ordered_videos],
+            'has_next': has_next,
+            'total': total_videos
+        })
+    else:
+        # 默认按ID顺序排序（最新在前）
+        pagination = Video.query.order_by(Video.id.desc()).paginate(
+            page=page, 
+            per_page=per_page,
+            error_out=False
+        )
+        
+        return jsonify({
+            'items': [{
+                'id': v.id,
+                'filename': v.filename,
+                'thumbnail_url': f'/api/thumbnail/{v.id}' if v.thumbnail_path else None
+            } for v in pagination.items],
+            'has_next': pagination.has_next,
+            'total': pagination.total
+        })
 
 # 用户认证和收藏相关API
 @app.route('/api/login', methods=['POST'])

@@ -107,9 +107,18 @@ export default {
     const touchEndY = ref(0)
     const swipeThreshold = 100 // 滑动阈值，超过这个值才触发切换
 
+    // 播放列表类型和种子
+    const playlistType = ref(route.query.playlistType || 'latest')
+    const playlistSeed = ref(route.query.seed || null)
+
     // 检查是否在收藏页面
     const isFavoritesPage = computed(() => {
       return route.path.includes('/favorites') || route.query.from === 'favorites'
+    })
+
+    // 检查是否在特定播放列表页面
+    const isPlaylistPage = computed(() => {
+      return playlistType.value === 'latest' || playlistType.value === 'random'
     })
 
     // 收藏列表相关状态
@@ -170,6 +179,9 @@ export default {
               prevVideoId.value = null
             }
           }
+        } else if (isPlaylistPage.value) {
+          // 根据播放列表类型获取上下视频
+          await loadPlaylistNavigation(id)
         } else {
           // 普通页面按所有视频顺序设置
           nextVideoId.value = data.next_id
@@ -188,6 +200,45 @@ export default {
         }
       } catch (error) {
         console.error('获取视频信息失败:', error)
+      }
+    }
+
+    // 根据播放列表类型获取导航视频
+    const loadPlaylistNavigation = async (currentId) => {
+      try {
+        const baseUrl = getBaseUrl()
+        let apiUrl = `${baseUrl}/videos?page=1&per_page=100` // 获取足够多的视频用于导航
+        
+        if (playlistType.value === 'random') {
+          apiUrl += `&random=true&seed=${playlistSeed.value}`
+        }
+        
+        const res = await fetch(apiUrl)
+        if (!res.ok) throw new Error(`HTTP错误! 状态码: ${res.status}`)
+        
+        const data = await res.json()
+        if (data.items && data.items.length > 0) {
+          const videoIds = data.items.map(v => v.id)
+          const currentIndex = videoIds.indexOf(parseInt(currentId))
+          
+          if (currentIndex !== -1) {
+            // 设置下一个视频ID
+            if (currentIndex < videoIds.length - 1) {
+              nextVideoId.value = videoIds[currentIndex + 1]
+            } else {
+              nextVideoId.value = null
+            }
+            
+            // 设置上一个视频ID
+            if (currentIndex > 0) {
+              prevVideoId.value = videoIds[currentIndex - 1]
+            } else {
+              prevVideoId.value = null
+            }
+          }
+        }
+      } catch (error) {
+        console.error('获取播放列表导航失败:', error)
       }
     }
 
@@ -308,11 +359,21 @@ export default {
         document.documentElement.style.setProperty('--slide-direction', '100%')
         
         // 保持当前页面上下文
+        const queryParams = {}
         if (isFavoritesPage.value) {
-          router.push({ name: 'Player', params: { id: nextVideoId.value }, query: { from: 'favorites' } })
-        } else {
-          router.push({ name: 'Player', params: { id: nextVideoId.value } })
+          queryParams.from = 'favorites'
+        } else if (isPlaylistPage.value) {
+          queryParams.playlistType = playlistType.value
+          if (playlistSeed.value) {
+            queryParams.seed = playlistSeed.value
+          }
         }
+        
+        router.push({ 
+          name: 'Player', 
+          params: { id: nextVideoId.value }, 
+          query: queryParams 
+        })
         
         setTimeout(() => {
           isTransitioning.value = false
@@ -328,11 +389,21 @@ export default {
         document.documentElement.style.setProperty('--slide-direction', '-100%')
         
         // 保持当前页面上下文
+        const queryParams = {}
         if (isFavoritesPage.value) {
-          router.push({ name: 'Player', params: { id: prevVideoId.value }, query: { from: 'favorites' } })
-        } else {
-          router.push({ name: 'Player', params: { id: prevVideoId.value } })
+          queryParams.from = 'favorites'
+        } else if (isPlaylistPage.value) {
+          queryParams.playlistType = playlistType.value
+          if (playlistSeed.value) {
+            queryParams.seed = playlistSeed.value
+          }
         }
+        
+        router.push({ 
+          name: 'Player', 
+          params: { id: prevVideoId.value }, 
+          query: queryParams 
+        })
         
         setTimeout(() => {
           isTransitioning.value = false

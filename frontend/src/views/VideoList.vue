@@ -1,7 +1,15 @@
 <template>
   <div class="app-container">
     <div class="video-grid-container" ref="videoGrid" @scroll="handleScroll">
-      <h1>快乐源泉~</h1>
+      <!-- 顶部子页面导航 -->
+      <div class="sub-nav">
+        <div class="sub-nav-item" :class="{ active: activeTab === 'latest' }" @click="switchTab('latest')">
+          最新
+        </div>
+        <div class="sub-nav-item" :class="{ active: activeTab === 'random' }" @click="switchTab('random')">
+          随机
+        </div>
+      </div>
       
       <div class="video-grid">
         <div 
@@ -75,6 +83,9 @@ export default {
     const loading = ref(false)
     const hasMore = ref(true)
     const page = ref(1)
+    const activeTab = ref('latest') // 'latest' 或 'random'
+    const currentPlaylistType = ref('latest') // 当前播放列表类型
+    const randomSeed = ref(Date.now()) // 随机种子，确保随机列表一致性
     
 
     
@@ -83,6 +94,23 @@ export default {
       if (container && container.scrollTop + container.clientHeight >= container.scrollHeight - 100) {
         loadVideos()
       }
+    }
+
+    const switchTab = (tab) => {
+      if (activeTab.value === tab) return
+      
+      activeTab.value = tab
+      currentPlaylistType.value = tab
+      videos.value = []
+      page.value = 1
+      hasMore.value = true
+      loading.value = false
+      
+      if (tab === 'random') {
+        randomSeed.value = Date.now()
+      }
+      
+      loadVideos()
     }
 
     onMounted(() => {
@@ -139,7 +167,14 @@ export default {
         const baseUrl = import.meta.env.DEV 
           ? '/api' 
           : `${window.location.protocol}//${window.location.hostname}:5003/api`;
-        const res = await fetch(`${baseUrl}/videos?page=${page.value}`, {
+        
+        let apiUrl = `${baseUrl}/videos?page=${page.value}`
+        
+        if (activeTab.value === 'random') {
+          apiUrl += `&random=true&seed=${randomSeed.value}`
+        }
+        
+        const res = await fetch(apiUrl, {
           headers: {
             'Content-Type': 'application/json'
           }
@@ -190,7 +225,11 @@ export default {
     const openPlayer = (video) => {
       router.push({
         name: 'Player',
-        params: { id: video.id }
+        params: { id: video.id },
+        query: {
+          playlistType: activeTab.value,
+          seed: activeTab.value === 'random' ? randomSeed.value : undefined
+        }
       })
     }
 
@@ -254,6 +293,39 @@ export default {
 .no-more {
   color: #999;
   font-size: 0.9em;
+}
+
+/* 顶部子页面导航样式 */
+.sub-nav {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #eee;
+  background: white;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 10px 0;
+}
+
+.sub-nav-item {
+  padding: 8px 20px;
+  margin: 0 10px;
+  cursor: pointer;
+  border-radius: 20px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  color: #666;
+}
+
+.sub-nav-item:hover {
+  background-color: #f5f5f5;
+  color: #333;
+}
+
+.sub-nav-item.active {
+  background-color: #ff6b81;
+  color: white;
 }
 </style>
 
