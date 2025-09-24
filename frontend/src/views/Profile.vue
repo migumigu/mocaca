@@ -72,7 +72,18 @@
       </div>
 
       <div class="dislikes-section" v-if="currentUser">
-        <h3>我的讨厌</h3>
+        <div class="dislikes-header">
+          <h3>我的讨厌</h3>
+          <!-- 垃圾桶删除图标（仅管理员可见） -->
+          <div 
+            v-if="currentUser && currentUser.is_admin && dislikes.length > 0"
+            class="delete-all-icon"
+            @click="deleteAllDislikeContent"
+            title="一键删除所有讨厌内容"
+          >
+            🗑️
+          </div>
+        </div>
         <div v-if="dislikesLoading" class="loading">
           加载中...
         </div>
@@ -273,6 +284,35 @@ export default {
 
     const switchSettingTab = (tab) => {
       activeSettingTab.value = tab
+    }
+
+    const deleteAllDislikeContent = async () => {
+      if (!confirm('确定要删除所有讨厌内容吗？此操作将永久删除相关文件和数据库记录，且不可恢复！')) {
+        return
+      }
+      
+      try {
+        const baseUrl = getBaseUrl()
+        const res = await fetch(`${baseUrl}/admin/delete-all-dislike-content`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.value.id}`
+          }
+        })
+        
+        if (res.ok) {
+          const data = await res.json()
+          alert(data.message || '所有讨厌内容删除成功')
+          // 重新加载讨厌列表（应该为空）
+          await loadDislikes()
+        } else {
+          const errorData = await res.json()
+          alert(errorData.error || '删除失败')
+        }
+      } catch (error) {
+        alert('网络错误，请重试')
+      }
     }
 
     const refreshFileList = async () => {
@@ -500,6 +540,32 @@ export default {
   padding: 20px;
   border-radius: 12px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.dislikes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 15px;
+}
+
+.dislikes-header h3 {
+  margin: 0;
+  color: #333;
+}
+
+.delete-all-icon {
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  background: rgba(255, 107, 129, 0.1);
+}
+
+.delete-all-icon:hover {
+  background: rgba(255, 107, 129, 0.2);
+  transform: scale(1.1);
 }
 
 .dislikes-section h3 {

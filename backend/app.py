@@ -509,6 +509,122 @@ def check_dislike():
     dislike = Dislike.query.filter_by(user_id=user_id, video_id=video_id).first()
     return jsonify({'is_disliked': dislike is not None})
 
+# 管理员API - 删除讨厌内容（包括文件和数据库记录）
+@app.route('/api/admin/delete-dislike-content', methods=['DELETE'])
+def admin_delete_dislike_content():
+    """管理员删除讨厌内容（包括文件、缩略图、数据库记录）"""
+    # 检查用户权限
+    user_id = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not user_id:
+        return jsonify({'error': '未授权'}), 401
+    
+    user = User.query.get(user_id)
+    if not user or not user.is_admin:
+        return jsonify({'error': '权限不足'}), 403
+    
+    video_id = request.args.get('video_id', type=int)
+    if not video_id:
+        return jsonify({'error': '视频ID不能为空'}), 400
+    
+    try:
+        # 获取视频信息
+        video = Video.query.get(video_id)
+        if not video:
+            return jsonify({'error': '视频不存在'}), 404
+        
+        # 记录文件路径用于删除
+        video_file_path = video.filepath
+        thumbnail_path = video.thumbnail_path
+        
+        # 删除所有相关的讨厌记录
+        Dislike.query.filter_by(video_id=video_id).delete()
+        
+        # 删除视频记录
+        db.session.delete(video)
+        db.session.commit()
+        
+        # 删除物理文件
+        deleted_files = []
+        if os.path.exists(video_file_path):
+            os.remove(video_file_path)
+            deleted_files.append(video_file_path)
+        
+        if thumbnail_path and os.path.exists(thumbnail_path):
+            os.remove(thumbnail_path)
+            deleted_files.append(thumbnail_path)
+        
+        return jsonify({
+            'status': 'success',
+            'message': '讨厌内容删除成功',
+            'deleted_files': deleted_files,
+            'video_id': video_id
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'删除失败: {str(e)}'}), 500
+
+# 管理员API - 批量删除所有讨厌内容
+@app.route('/api/admin/delete-all-dislike-content', methods=['DELETE'])
+def admin_delete_all_dislike_content():
+    """管理员批量删除所有讨厌内容（包括文件、缩略图、数据库记录）"""
+    # 检查用户权限
+    user_id = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not user_id:
+        return jsonify({'error': '未授权'}), 401
+    
+    user = User.query.get(user_id)
+    if not user or not user.is_admin:
+        return jsonify({'error': '权限不足'}), 403
+    
+    try:
+        # 获取所有讨厌的视频ID
+        disliked_video_ids = [d.video_id for d in Dislike.query.all()]
+        
+        if not disliked_video_ids:
+            return jsonify({'message': '没有讨厌内容可删除'})
+        
+        # 获取所有讨厌的视频
+        disliked_videos = Video.query.filter(Video.id.in_(disliked_video_ids)).all()
+        
+        deleted_files = []
+        deleted_video_ids = []
+        
+        # 删除所有讨厌记录
+        Dislike.query.delete()
+        
+        # 删除视频记录和相关文件
+        for video in disliked_videos:
+            video_file_path = video.filepath
+            thumbnail_path = video.thumbnail_path
+            
+            # 删除物理文件
+            if os.path.exists(video_file_path):
+                os.remove(video_file_path)
+                deleted_files.append(video_file_path)
+            
+            if thumbnail_path and os.path.exists(thumbnail_path):
+                os.remove(thumbnail_path)
+                deleted_files.append(thumbnail_path)
+            
+            # 删除视频记录
+            db.session.delete(video)
+            deleted_video_ids.append(video.id)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'status': 'success',
+            'message': '所有讨厌内容删除成功',
+            'deleted_files_count': len(deleted_files),
+            'deleted_videos_count': len(deleted_video_ids),
+            'deleted_video_ids': deleted_video_ids
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'批量删除失败: {str(e)}'}), 500
+
 # 管理员API - 刷新文件列表
 @app.route('/api/admin/refresh-files', methods=['POST'])
 def admin_refresh_files():
