@@ -93,6 +93,10 @@
         <NavIcons name="home" :active="$route.path === '/'" />
         <span>首页</span>
       </div>
+      <div class="nav-item" :class="{ active: $route.path === '/directory' }" @click="$router.push('/directory')">
+        <NavIcons name="folder" :active="$route.path === '/directory'" />
+        <span>目录</span>
+      </div>
       <div class="nav-item" :class="{ active: $route.path === '/favorites' }" @click="$router.push('/favorites')">
         <NavIcons name="favorite" :active="$route.path === '/favorites'" />
         <span>收藏</span>
