@@ -4,7 +4,47 @@ version: '3.8'
 services:
   frontend:
     build:
+version: '3.8'
+
+services:
+  mocaca-backend:
+    image: mocaca-backend-x86:latest
+    platform: linux/amd64  # 明确指定x86架构
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        - PLATFORM=amd64
+    ports:
+      - "5003:5003"
+    volumes:
+      - ./backend/instance:/app/instance
+      - ./media:/app/media
+      - ./thumbnails:/app/thumbnails
+    environment:
+      - FLASK_ENV=production
+      - FLASK_APP=app.py
+
+  mocaca-frontend:
+    image: mocaca-frontend-x86:latest
+    platform: linux/amd64  # 明确指定x86架构
+    build:
       context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - PLATFORM=amd64
+    ports:
+      - "5173:5173"
+    depends_on:
+      - mocaca-backend
+    environment:
+      - VITE_API_URL=http://localhost:5003
+
+# 卷定义
+volumes:
+  media:
+  thumbnails:
+  db:
       platforms: [linux/amd64, linux/arm64]
     ports:
       - "5173:80"
