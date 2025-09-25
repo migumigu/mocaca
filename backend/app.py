@@ -111,7 +111,7 @@ def scan_media_folder():
     # 1. 扫描media目录获取实际存在的文件
     for root, dirs, files in os.walk(app.config['MEDIA_FOLDER']):
         for filename in files:
-            if filename.endswith('.mp4'):
+            if filename.endswith(('.mp4', '.mov', '.avi')):
                 filepath = os.path.join(root, filename)
                 rel_path = os.path.relpath(filepath, app.config['MEDIA_FOLDER'])
                 current_files.add(rel_path)

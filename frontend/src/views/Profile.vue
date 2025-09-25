@@ -194,10 +194,6 @@
             <p class="setting-description">管理媒体文件和数据库同步</p>
             
             <div class="action-buttons">
-              <button @click="refreshFileList" :disabled="refreshing" class="refresh-btn">
-                {{ refreshing ? '刷新中...' : '更新文件列表' }}
-              </button>
-              
               <button @click="syncFiles" :disabled="refreshing" class="sync-btn">
                 {{ refreshing ? '同步中...' : '同步文件' }}
               </button>
@@ -430,33 +426,6 @@ export default {
       }
     }
 
-    const refreshFileList = async () => {
-      refreshing.value = true
-      refreshMessage.value = ''
-      
-      try {
-        const baseUrl = getBaseUrl()
-        const res = await fetch(`${baseUrl}/admin/refresh-files`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${currentUser.value.id}`
-          }
-        })
-        
-        if (res.ok) {
-          const data = await res.json()
-          refreshMessage.value = data.message || '文件列表更新成功'
-        } else {
-          const errorData = await res.json()
-          refreshMessage.value = errorData.error || '更新失败'
-        }
-      } catch (error) {
-        refreshMessage.value = '网络错误，请重试'
-      } finally {
-        refreshing.value = false
-      }
-    }
 
     const syncFiles = async () => {
       refreshing.value = true
@@ -519,7 +488,7 @@ export default {
       switchProfileTab,
       switchSettingTab,
       changePassword,
-      refreshFileList
+      syncFiles
     }
   }
 }
@@ -917,21 +886,6 @@ export default {
   margin-bottom: 15px;
 }
 
-.refresh-btn {
-  padding: 8px 15px;
-  background: #27ae60;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: background 0.3s ease;
-  flex: 1;
-}
-
-.refresh-btn:hover:not(:disabled) {
-  background: #219a52;
-}
 
 .sync-btn {
   padding: 8px 15px;
@@ -949,7 +903,6 @@ export default {
   background: #2980b9;
 }
 
-.refresh-btn:disabled,
 .sync-btn:disabled {
   background: #95a5a6;
   cursor: not-allowed;

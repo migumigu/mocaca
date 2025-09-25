@@ -128,12 +128,17 @@ body {
 }
 
 .action-icon.active {
-  background: #4a90e2;
-  box-shadow: 0 2px 12px rgba(74, 144, 226, 0.4);
+  background: rgba(74, 144, 226, 0.6);
+  box-shadow: 0 2px 12px rgba(74, 144, 226, 0.3);
+  transform: scale(0.5);
+  width: 48px;
+  height: 48px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .action-icon.active:hover {
-  background: #357abd;
-  transform: scale(1.05);
+  background: rgba(53, 122, 189, 0.7);
+  transform: scale(0.55);
 }
 </style>
