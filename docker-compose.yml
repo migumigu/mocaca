@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  mocaca-backend:
+    image: mocaca-backend:x86
+    pull_policy: never
+    ports:
+      - "5003:5003"
+    volumes:
+      - ./media:/app/media
+      - ./thumbnails:/app/thumbnails
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+
+  frontend-x86:
+    image: mocaca-frontend:x86
+    platform: linux/amd64
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  frontend-arm64:
+    image: mocaca-frontend:arm64
+    platform: linux/arm64
+    ports:
+      - "8081:80"
+    restart: unless-stopped

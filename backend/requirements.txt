@@ -1,0 +1,7 @@
+Flask==2.3.2
+Flask-Cors==3.0.10
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.23
+Pillow==10.3.0
+ffmpeg-python==0.2.0  # 视频处理
+python-magic==0.4.27  # 文件类型检测
