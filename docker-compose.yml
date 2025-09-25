@@ -1,15 +1,9 @@
-# docker-compose.yml
-version: '3.8'
-
-services:
-  frontend:
-    build:
 version: '3.8'
 
 services:
   mocaca-backend:
     image: mocaca-backend-x86:latest
-    platform: linux/amd64  # 明确指定x86架构
+    platform: linux/amd64
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -24,44 +18,27 @@ services:
     environment:
       - FLASK_ENV=production
       - FLASK_APP=app.py
+      - MEDIA_FOLDER=/app/media
+      - THUMBNAIL_FOLDER=/app/thumbnails
+    restart: unless-stopped
 
   mocaca-frontend:
     image: mocaca-frontend-x86:latest
-    platform: linux/amd64  # 明确指定x86架构
+    platform: linux/amd64
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
         - PLATFORM=amd64
     ports:
-      - "5173:5173"
+      - "5173:80"
     depends_on:
       - mocaca-backend
     environment:
       - VITE_API_URL=http://localhost:5003
+    restart: unless-stopped
 
-# 卷定义
 volumes:
   media:
   thumbnails:
   db:
-      platforms: [linux/amd64, linux/arm64]
-    ports:
-      - "5173:80"
-    depends_on:
-      - backend
-    restart: unless-stopped
-
-  backend:
-    build:
-      context: ./backend
-      platforms: [linux/amd64, linux/arm64]
-    ports:
-      - "5003:5003"
-    volumes:
-      - ./media:/app/media
-      - ./thumbnails:/app/thumbnails
-    environment:
-      - MEDIA_FOLDER=/app/media
-      - THUMBNAIL_FOLDER=/app/thumbnails
-    restart: unless-stopped

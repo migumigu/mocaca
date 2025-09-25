@@ -1,24 +1,46 @@
-# 后端Dockerfile
-FROM python:3.11-slim
+# 多阶段构建优化版
+# 阶段1: 构建环境
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/python:3.12-alpine as builder
 
-# 设置工作目录
+# 配置华为云PyPI镜像
+RUN echo "[global]" > /etc/pip.conf && \
+    echo "index-url = https://repo.huaweicloud.com/repository/pypi/simple" >> /etc/pip.conf && \
+    echo "trusted-host = repo.huaweicloud.com" >> /etc/pip.conf
+
+# 安装系统构建依赖
+RUN apk add --no-cache --virtual .build-deps \
+    gcc \
+    musl-dev \
+    jpeg-dev \
+    zlib-dev \
+    ffmpeg
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --user -r requirements.txt gunicorn
+
+# 阶段2: 运行时环境
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/python:3.12-alpine
+
+# 安装运行时依赖
+RUN apk add --no-cache jpeg-dev zlib-dev ffmpeg
+
+# 创建非root用户
+RUN adduser -D appuser && mkdir /app && chown appuser:appuser /app
+USER appuser
 WORKDIR /app
 
-# 复制依赖文件
-COPY requirements.txt .
+# 从构建阶段复制已安装的Python包
+COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
+COPY --chown=appuser:appuser . .
 
-# 安装依赖
-RUN pip install --no-cache-dir -r requirements.txt
+# 确保Python包在PATH中
+ENV PATH=/home/appuser/.local/bin:$PATH
+ENV PYTHONPATH=/home/appuser/.local/lib/python3.12/site-packages:$PYTHONPATH
+ENV FLASK_APP=app.py FLASK_ENV=production
 
-# 复制应用代码
-COPY . .
+# 验证依赖是否正确安装
+RUN python -c "import flask_sqlalchemy; print('flask_sqlalchemy imported successfully')" || echo "Dependency check failed"
 
-# 设置环境变量
-ENV FLASK_APP=app.py
-ENV FLASK_ENV=production
-
-# 暴露端口
 EXPOSE 5003
-
-# 启动命令
 CMD ["gunicorn", "--bind", "0.0.0.0:5003", "app:app"]
