@@ -18,6 +18,8 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.dirn
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
+
+
 # 数据库模型
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -758,7 +760,15 @@ def admin_refresh_files():
         print(f"🔍 详细错误信息: {traceback.format_exc()}")
         return jsonify({'error': f'刷新文件列表失败: {str(e)}'}), 500
 
+# 应用启动时自动初始化数据库
+def initialize_database():
+    """在应用启动时初始化数据库"""
+    with app.app_context():
+        init_db()
+
+# 在应用启动时立即初始化数据库
+initialize_database()
+
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', '5003'))
-    init_db()  # 初始化数据库
     app.run(host='0.0.0.0', port=port, debug=True)
