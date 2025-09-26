@@ -2,6 +2,7 @@
   <div 
     class="player-container"
     @touchstart="handleTouchStart"
+    @touchmove="handleTouchMove"
     @touchend="handleTouchEnd"
   >
     <div class="back-button" @click="goBack">
@@ -117,7 +118,13 @@ export default {
     const isTransitioning = ref(false)
     const touchStartY = ref(0)
     const touchEndY = ref(0)
+    const touchStartX = ref(0)
+    const touchEndX = ref(0)
     const swipeThreshold = 100 // 滑动阈值，超过这个值才触发切换
+    const longPressTimer = ref(null)
+    const isLongPressing = ref(false)
+    const originalPlaybackRate = ref(1)
+    const isHorizontalSwipe = ref(false)
 
     // 播放列表类型和种子
     const playlistType = ref(route.query.playlistType || 'latest')
@@ -320,6 +327,12 @@ export default {
           loadNextVideo()
         }
       }
+      
+      // 阻止视频元素的上下文菜单（长按下载菜单）
+      videoRef.value.addEventListener('contextmenu', (event) => {
+        event.preventDefault()
+        return false
+      })
     }
 
     const pauseVideo = () => {
@@ -366,11 +379,41 @@ export default {
     // 处理触摸开始事件
     const handleTouchStart = (event) => {
       touchStartY.value = event.touches[0].clientY
+      touchStartX.value = event.touches[0].clientX
+      
+      // 开始长按计时器（2倍速播放）
+      longPressTimer.value = setTimeout(() => {
+        if (videoRef.value) {
+          isLongPressing.value = true
+          originalPlaybackRate.value = videoRef.value.playbackRate
+          videoRef.value.playbackRate = 2.0 // 2倍速播放
+        }
+      }, 500) // 长按500ms触发
+    }
+
+    // 处理触摸移动事件
+    const handleTouchMove = (event) => {
+      // 暂时移除水平滑动功能，只处理垂直滑动
     }
 
     // 处理触摸结束事件
     const handleTouchEnd = (event) => {
       touchEndY.value = event.changedTouches[0].clientY
+      touchEndX.value = event.changedTouches[0].clientX
+      
+      // 清除长按计时器
+      if (longPressTimer.value) {
+        clearTimeout(longPressTimer.value)
+        longPressTimer.value = null
+      }
+      
+      // 恢复播放速度（如果正在长按加速）
+      if (isLongPressing.value && videoRef.value) {
+        videoRef.value.playbackRate = originalPlaybackRate.value
+        isLongPressing.value = false
+      }
+      
+      // 处理垂直滑动切换视频
       const swipeDistance = touchEndY.value - touchStartY.value
       
       // 判断滑动方向和距离
