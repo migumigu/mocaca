@@ -12,9 +12,9 @@ services:
     ports:
       - "5003:5003"
     volumes:
-      - ./backend/instance:/app/instance
-      - ./media:/app/media
-      - ./thumbnails:/app/thumbnails
+      - instance_data:/app/instance
+      - media_data:/app/media
+      - thumbnails_data:/app/thumbnails
     environment:
       - FLASK_ENV=production
       - FLASK_APP=app.py
@@ -39,6 +39,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  media:
-  thumbnails:
-  db:
+  instance_data:
+  media_data:
+  thumbnails_data:

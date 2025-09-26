@@ -53,24 +53,46 @@ class Dislike(db.Model):
     __table_args__ = (db.UniqueConstraint('user_id', 'video_id', name='_user_video_dislike_uc'),)
 
 # 配置媒体文件路径
-MEDIA_FOLDER = os.path.join(os.path.dirname(__file__), '../media')
-THUMBNAIL_FOLDER = os.path.join(os.path.dirname(__file__), '../thumbnails')
+# 优先使用环境变量中的路径，否则使用默认路径
+MEDIA_FOLDER = os.environ.get('MEDIA_FOLDER', os.path.join(os.path.dirname(__file__), '../media'))
+THUMBNAIL_FOLDER = os.environ.get('THUMBNAIL_FOLDER', os.path.join(os.path.dirname(__file__), '../thumbnails'))
 app.config['MEDIA_FOLDER'] = MEDIA_FOLDER
 app.config['THUMBNAIL_FOLDER'] = THUMBNAIL_FOLDER
 
-# 确保缩略图目录存在
+print(f"📁 媒体目录配置: {MEDIA_FOLDER}")
+print(f"📁 缩略图目录配置: {THUMBNAIL_FOLDER}")
+print(f"📁 媒体目录是否存在: {os.path.exists(MEDIA_FOLDER)}")
+print(f"📁 缩略图目录是否存在: {os.path.exists(THUMBNAIL_FOLDER)}")
+
+# 确保目录存在
+os.makedirs(MEDIA_FOLDER, exist_ok=True)
 os.makedirs(THUMBNAIL_FOLDER, exist_ok=True)
 
 def init_db():
     with app.app_context():
-        db.create_all()
-        # 创建默认管理员账户
-        admin_user = User.query.filter_by(username='admin').first()
-        if not admin_user:
-            admin_user = User(username='admin', password='admin', is_admin=True)
-            db.session.add(admin_user)
-            db.session.commit()
-            print("创建默认管理员账户: admin/admin")
+        # 检查数据库文件是否存在
+        db_file = 'videos.db'
+        backup_db_file = 'backdata/videos.db'
+        
+        if not os.path.exists(db_file) and os.path.exists(backup_db_file):
+            # 从backdata目录复制预初始化的数据库文件
+            import shutil
+            shutil.copy2(backup_db_file, db_file)
+            print(f"从 {backup_db_file} 复制预初始化的数据库文件到 {db_file}")
+        elif not os.path.exists(db_file):
+            # 如果备份文件也不存在，创建新的数据库
+            db.create_all()
+            # 创建默认管理员账户
+            admin_user = User.query.filter_by(username='admin').first()
+            if not admin_user:
+                admin_user = User(username='admin', password='admin', is_admin=True)
+                db.session.add(admin_user)
+                db.session.commit()
+                print("创建默认管理员账户: admin/admin")
+        else:
+            # 数据库文件已存在，直接连接
+            db.create_all()
+        
         scan_media_folder()
 
 def is_portrait_video(filepath):
@@ -665,41 +687,79 @@ def admin_refresh_files():
         return jsonify({'error': '权限不足'}), 403
     
     try:
-        # 重新扫描媒体目录
-        media_dir = '/Users/yang/Documents/code/mocaca/media'
-        video_files = []
+        # 获取媒体目录路径
+        media_dir = app.config['MEDIA_FOLDER']
+        print(f"🎯 开始扫描媒体目录: {media_dir}")
+        print(f"📁 媒体目录是否存在: {os.path.exists(media_dir)}")
         
+        if os.path.exists(media_dir):
+            print(f"📂 媒体目录权限: {oct(os.stat(media_dir).st_mode)}")
+        
+        video_files = []
+        scanned_dirs = []
+        
+        # 递归扫描所有子目录
         for root, dirs, files in os.walk(media_dir):
+            scanned_dirs.append(root)
+            print(f"🔍 扫描目录: {root}")
+            print(f"   - 子目录: {dirs}")
+            print(f"   - 文件数: {len(files)}")
+            
             for file in files:
                 if file.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
                     file_path = os.path.join(root, file)
                     relative_path = os.path.relpath(file_path, media_dir)
+                    
+                    print(f"   ✅ 找到视频文件: {file}")
+                    print(f"     完整路径: {file_path}")
+                    print(f"     相对路径: {relative_path}")
+                    print(f"     文件是否存在: {os.path.exists(file_path)}")
+                    
                     video_files.append({
                         'filename': file,
                         'filepath': relative_path,
                         'directory': root.replace(media_dir, '').lstrip('/')
                     })
         
+        print(f"📊 扫描完成统计:")
+        print(f"   - 扫描目录总数: {len(scanned_dirs)}")
+        print(f"   - 找到视频文件数: {len(video_files)}")
+        print(f"   - 扫描的目录列表: {scanned_dirs}")
+        
         # 更新数据库
+        current_count = Video.query.count()
+        print(f"🗃️ 当前数据库中的视频记录数: {current_count}")
+        
         Video.query.delete()  # 清空现有数据
+        print("🗑️ 已清空数据库中的视频记录")
         
         for video_data in video_files:
             video = Video(
-                filename=video_data['filename'],
-                filepath=video_data['filepath'],
-                directory=video_data['directory']
+                filename=video_data['filepath'],  # 使用相对路径作为文件名
+                filepath=os.path.join(media_dir, video_data['filepath'])  # 完整路径
             )
             db.session.add(video)
+            print(f"💾 添加视频到数据库: {video_data['filepath']}")
         
         db.session.commit()
+        print("✅ 数据库提交成功")
         
         return jsonify({
             'message': f'成功更新文件列表，共找到 {len(video_files)} 个视频文件',
-            'file_count': len(video_files)
+            'file_count': len(video_files),
+            'scanned_directories': len(scanned_dirs),
+            'details': {
+                'media_directory': media_dir,
+                'scanned_dirs': scanned_dirs,
+                'video_files': [v['filepath'] for v in video_files]
+            }
         })
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ 刷新文件列表失败: {str(e)}")
+        import traceback
+        print(f"🔍 详细错误信息: {traceback.format_exc()}")
         return jsonify({'error': f'刷新文件列表失败: {str(e)}'}), 500
 
 if __name__ == '__main__':

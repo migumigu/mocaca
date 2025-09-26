@@ -13,6 +13,8 @@ __pycache__/
 # 媒体文件
 media/
 thumbnails/
+instance/
+x86_build_venv/
 
 # 系统文件
 .DS_Store

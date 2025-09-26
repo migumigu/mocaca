@@ -5,6 +5,8 @@ docker buildx create --use --name multiarch || true
 
 # 获取当前版本号
 VERSION=$(git describe --tags --abbrev=0 | sed 's/^v//' || echo "latest")
+# 强制使用1.7.6版本
+VERSION="1.7.6"
 
 # 设置华为云镜像源
 export DOCKER_BUILDKIT=1
