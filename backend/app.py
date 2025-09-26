@@ -14,7 +14,7 @@ import base64
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///videos.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.dirname(__file__), 'instance', 'videos.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -70,17 +70,12 @@ os.makedirs(THUMBNAIL_FOLDER, exist_ok=True)
 
 def init_db():
     with app.app_context():
-        # 检查数据库文件是否存在
-        db_file = 'videos.db'
-        backup_db_file = 'backdata/videos.db'
+        # 检查数据库文件是否存在（使用SQLAlchemy配置的路径）
+        db_file = 'instance/videos.db'
         
-        if not os.path.exists(db_file) and os.path.exists(backup_db_file):
-            # 从backdata目录复制预初始化的数据库文件
-            import shutil
-            shutil.copy2(backup_db_file, db_file)
-            print(f"从 {backup_db_file} 复制预初始化的数据库文件到 {db_file}")
-        elif not os.path.exists(db_file):
-            # 如果备份文件也不存在，创建新的数据库
+        if not os.path.exists(db_file):
+            # 如果数据库文件不存在，创建新的数据库
+            print(f"数据库文件 {db_file} 不存在，创建新的数据库")
             db.create_all()
             # 创建默认管理员账户
             admin_user = User.query.filter_by(username='admin').first()
@@ -90,8 +85,9 @@ def init_db():
                 db.session.commit()
                 print("创建默认管理员账户: admin/admin")
         else:
-            # 数据库文件已存在，直接连接
+            # 数据库文件已存在，直接连接（确保表结构存在）
             db.create_all()
+            print(f"数据库文件 {db_file} 已存在，直接连接")
         
         scan_media_folder()
 
