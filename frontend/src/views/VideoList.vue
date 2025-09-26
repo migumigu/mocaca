@@ -237,7 +237,11 @@ export default {
     }
     
     const removeFileExtension = (filename) => {
-      return filename.replace(/\.[^/.]+$/, "")
+      if (!filename) return ''
+      // 先提取文件名（去掉路径）
+      const baseName = filename.split('/').pop().split('\\').pop()
+      // 再去掉文件扩展名
+      return baseName.replace(/\.[^/.]+$/, "")
     }
 
     const openPlayer = (video) => {

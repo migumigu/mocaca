@@ -445,10 +445,13 @@ export default {
       }
     }
 
-    // 去除文件后缀名（带空值检查）
+    // 去除文件后缀名和路径，只显示文件名（带空值检查）
     const removeFileExtension = (filename) => {
       if (!filename) return ''
-      return filename.replace(/\.[^/.]+$/, "")
+      // 先提取文件名（去掉路径）
+      const baseName = filename.split('/').pop().split('\\').pop()
+      // 再去掉文件扩展名
+      return baseName.replace(/\.[^/.]+$/, "")
     }
 
     // 收藏功能相关状态
