@@ -1,25 +1,24 @@
-# 开发环境文件
-.env
-*.local
-*.log
-*.tmp
-*.swp
+# Docker镜像文件
+*.tar
+*.tar.gz
 
-# 依赖目录
-node_modules/
-venv/
-__pycache__/
-
-# 媒体文件
-media/
-thumbnails/
+# 数据库文件
+*.db
 instance/
-x86_build_venv/
+backdata/
+
+# 环境文件
+.env
+venv/
 
 # 系统文件
 .DS_Store
-.idea/
+Thumbs.db
 
-# 编译输出
-dist/
-build/
+# 日志文件
+*.log
+logs/
+
+# 临时文件
+tmp/
+temp/
