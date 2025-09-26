@@ -25,54 +25,72 @@ fi
 
 echo "=== 开始构建多架构镜像(v${VERSION}) ==="
 
-# 构建后端镜像 (x86 + ARM)
-echo "构建后端镜像 (x86 + ARM)..."
+# 分别构建后端镜像 (x86 和 ARM)
+echo "构建后端镜像 (x86)..."
 (cd backend && \
-docker buildx build \
-  --platform linux/amd64,linux/arm64 \
-  -t aidedaijiayang/mocaca-backend:${VERSION} \
-  -t aidedaijiayang/mocaca-backend:latest \
-  --push .) || exit 1
+docker buildx build --platform linux/amd64 \
+  -t mocaca-backend-x86:${VERSION} \
+  -t mocaca-backend-x86:latest \
+  --load .) || exit 1
 
-# 构建前端镜像 (x86 + ARM，如果存在)
+echo "构建后端镜像 (ARM)..."
+(cd backend && \
+docker buildx build --platform linux/arm64 \
+  -t mocaca-backend-arm:${VERSION} \
+  -t mocaca-backend-arm:latest \
+  --load .) || exit 1
+
+# 分别构建前端镜像 (x86 和 ARM，如果存在)
 if [ "$BUILD_FRONTEND" = true ]; then
-    echo "构建前端镜像 (x86 + ARM)..."
+    echo "构建前端镜像 (x86)..."
     (cd frontend && \
-    docker buildx build \
-      --platform linux/amd64,linux/arm64 \
-      -t aidedaijiayang/mocaca-frontend:${VERSION} \
-      -t aidedaijiayang/mocaca-frontend:latest \
-      --push .) || exit 1
+    docker buildx build --platform linux/amd64 \
+      -t mocaca-frontend-x86:${VERSION} \
+      -t mocaca-frontend-x86:latest \
+      --load .) || exit 1
+
+    echo "构建前端镜像 (ARM)..."
+    (cd frontend && \
+    docker buildx build --platform linux/arm64 \
+      -t mocaca-frontend-arm:${VERSION} \
+      -t mocaca-frontend-arm:latest \
+      --load .) || exit 1
 else
     echo "跳过前端镜像构建"
 fi
 
 echo "=== 多架构镜像构建完成 ==="
-echo "✅ 后端镜像已构建并推送到DockerHub:"
-echo "   - aidedaijiayang/mocaca-backend:${VERSION} (x86 + ARM)"
-echo "   - aidedaijiayang/mocaca-backend:latest (x86 + ARM)"
+echo "✅ 后端镜像已构建并加载到本地:"
+echo "   - mocaca-backend-x86:${VERSION} (x86)"
+echo "   - mocaca-backend-x86:latest (x86)"
+echo "   - mocaca-backend-arm:${VERSION} (ARM)"
+echo "   - mocaca-backend-arm:latest (ARM)"
 
 if [ "$BUILD_FRONTEND" = true ]; then
-    echo "✅ 前端镜像已构建并推送到DockerHub:"
-    echo "   - aidedaijiayang/mocaca-frontend:${VERSION} (x86 + ARM)"
-    echo "   - aidedaijiayang/mocaca-frontend:latest (x86 + ARM)"
+    echo "✅ 前端镜像已构建并加载到本地:"
+    echo "   - mocaca-frontend-x86:${VERSION} (x86)"
+    echo "   - mocaca-frontend-x86:latest (x86)"
+    echo "   - mocaca-frontend-arm:${VERSION} (ARM)"
+    echo "   - mocaca-frontend-arm:latest (ARM)"
 fi
 
-echo ""
-echo "镜像查看地址:"
-echo "后端: https://hub.docker.com/r/aidedaijiayang/mocaca-backend"
-echo "前端: https://hub.docker.com/r/aidedaijiayang/mocaca-frontend"
-
-# 导出本地镜像用于测试
+# 导出本地镜像到tar文件
 echo ""
 echo "导出本地镜像到tar文件..."
-docker pull aidedaijiayang/mocaca-backend:${VERSION}
-docker save -o mocaca-backend-${VERSION}-multiarch.tar aidedaijiayang/mocaca-backend:${VERSION}
+docker save -o mocaca-backend-x86-${VERSION}.tar mocaca-backend-x86:latest
+docker save -o mocaca-backend-arm-${VERSION}.tar mocaca-backend-arm:latest
 
 if [ "$BUILD_FRONTEND" = true ]; then
-    docker pull aidedaijiayang/mocaca-frontend:${VERSION}
-    docker save -o mocaca-frontend-${VERSION}-multiarch.tar aidedaijiayang/mocaca-frontend:${VERSION}
+    docker save -o mocaca-frontend-x86-${VERSION}.tar mocaca-frontend-x86:latest
+    docker save -o mocaca-frontend-arm-${VERSION}.tar mocaca-frontend-arm:latest
 fi
+
+echo "生成的tar文件:"
+ls -lh mocaca-*-${VERSION}.tar 2>/dev/null || echo "未生成tar文件"
+
+# 查看镜像架构信息
+echo "镜像架构信息:"
+docker images | grep mocaca- || echo "镜像未加载到本地"
 
 echo "生成的tar文件:"
 ls -lh mocaca-*-${VERSION}-multiarch.tar 2>/dev/null || echo "未生成tar文件"
