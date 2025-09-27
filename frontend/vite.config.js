@@ -52,14 +52,14 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5003',
+        target: process.env.VITE_API_BASE_URL || 'http://localhost:5003',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '/api') // 保持路径不变
       },
       '/thumbnails': {
-        target: 'http://localhost:5003',
+        target: process.env.VITE_API_BASE_URL || 'http://localhost:5003',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/thumbnails/, '/thumbnails') // 保持路径不变
+        rewrite: (path) => path.replace(/^\/thumbnails', '/thumbnails') // 保持路径不变
       }
     }
   }
