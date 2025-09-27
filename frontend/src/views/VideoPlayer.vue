@@ -68,10 +68,16 @@
           <div class="action-button" @click.stop="toggleDislike">
             <div class="action-icon">
               <svg v-if="isDisliked" class="dislike-icon filled" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 15h-4v4h-2v-4H9l3.5-3.5L19 15zm-8-9h4V2h2v4h4l-3.5 3.5L11 6z"/>
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                <path d="M12 12L12 18" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                <path d="M10 10L14 14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M14 10L10 14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
               <svg v-else class="dislike-icon outline" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 15h-4v4h-2v-4H9l3.5-3.5L19 15zm-8-9h4V2h2v4h4l-3.5 3.5L11 6z"/>
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                <path d="M12 12L12 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M10 10L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M14 10L10 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             </div>
           </div>
@@ -100,19 +106,7 @@
       </div>
     </transition>
     
-    <!-- 滑动提示 -->
-    <div class="swipe-hint">
-      <div class="swipe-arrow up">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 19V5M5 12l7-7 7 7"/>
-        </svg>
-      </div>
-      <div class="swipe-arrow down">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 5v14M5 12l7 7 7-7"/>
-        </svg>
-      </div>
-    </div>
+
   </div>
 </template>
 
@@ -979,52 +973,7 @@ export default {
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
 }
 
-/* 滑动提示样式 */
-.swipe-hint {
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 15;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
 
-.swipe-arrow {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.7;
-  animation: pulse 2s infinite;
-}
-
-.swipe-arrow.up {
-  animation-delay: 0s;
-}
-
-.swipe-arrow.down {
-  animation-delay: 1s;
-}
-
-@keyframes pulse {
-  0% {
-    opacity: 0.3;
-    transform: scale(0.8);
-  }
-  50% {
-    opacity: 0.7;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0.3;
-    transform: scale(0.8);
-  }
-}
 
 
 
