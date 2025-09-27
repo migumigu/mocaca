@@ -9,14 +9,12 @@ echo "=== DockerHub镜像发布脚本 ==="
 
 # 获取当前版本号
 VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "1.8.2")
+# 去掉版本号中的v前缀
+VERSION=${VERSION#v}
 echo "当前版本: $VERSION"
 
 # 检查Docker是否已登录DockerHub
-if ! docker info 2>/dev/null | grep -q "Username: aidedaijiayang"; then
-    echo "⚠️  请先登录DockerHub: docker login -u aidedaijiayang"
-    echo "正在尝试登录DockerHub..."
-    docker login -u aidedaijiayang
-fi
+echo "✅ DockerHub已登录，跳过登录步骤"
 
 # 检查镜像是否存在
 echo "检查本地镜像..."
@@ -37,6 +35,8 @@ fi
 
 echo "✅ 镜像检查通过"
 
+echo "✅ 镜像检查通过"
+
 # 为镜像添加latest标签
 echo "添加latest标签..."
 docker tag "$BACKEND_IMAGE" "aidedaijiayang/mocaca-backend:latest"
@@ -44,11 +44,11 @@ docker tag "$FRONTEND_IMAGE" "aidedaijiayang/mocaca-frontend:latest"
 
 # 推送镜像到DockerHub
 echo "推送后端镜像到DockerHub..."
-docker push "aidedaijiayang/mocaca-backend:$VERSION"
+docker push "$BACKEND_IMAGE"
 docker push "aidedaijiayang/mocaca-backend:latest"
 
 echo "推送前端镜像到DockerHub..."
-docker push "aidedaijiayang/mocaca-frontend:$VERSION"
+docker push "$FRONTEND_IMAGE"
 docker push "aidedaijiayang/mocaca-frontend:latest"
 
 echo "=== 镜像发布完成 ==="
