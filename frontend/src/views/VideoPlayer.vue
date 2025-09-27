@@ -33,6 +33,9 @@
         
         <div class="video-info">
           <div class="video-title">{{ currentVideo.filename ? removeFileExtension(currentVideo.filename) : '' }}</div>
+          <div class="video-counter" v-if="currentVideoIndex !== -1 && totalVideos > 0">
+            {{ currentVideoIndex + 1 }} / {{ totalVideos }}
+          </div>
         </div>
         
         <!-- 加载指示器 -->
@@ -155,6 +158,11 @@ export default {
     // 播放列表类型和种子
     const playlistType = ref(route.query.playlistType || 'latest')
     const playlistSeed = ref(route.query.seed || null)
+    
+    // 卡片计数相关状态
+    const currentVideoIndex = ref(-1)
+    const totalVideos = ref(0)
+    const playlistVideos = ref([])
 
     // 检查是否在收藏页面
     const isFavoritesPage = computed(() => {
@@ -199,13 +207,14 @@ export default {
     // 获取当前视频信息
     const fetchVideoInfo = async (id) => {
       try {
-        const res = await fetch(`/api/videos/${id}`)
+        const baseUrl = getBaseUrl()
+        const res = await fetch(`${baseUrl}/videos/${id}`)
         if (!res.ok) throw new Error(`HTTP错误! 状态码: ${res.status}`)
         
         const data = await res.json()
         currentVideo.value = {
           ...data,
-          url: `/api/videos/file/${encodeURIComponent(data.filename)}`
+          url: `${baseUrl}/videos/file/${encodeURIComponent(data.filename)}`
         }
         
         // 如果在收藏页面，按收藏列表顺序设置上下视频
@@ -215,6 +224,10 @@ export default {
           currentFavoritesIndex.value = index
           
           if (index !== -1) {
+            // 设置卡片计数
+            currentVideoIndex.value = index
+            totalVideos.value = favoritesList.value.length
+            
             // 设置下一个视频ID
             if (index < favoritesList.value.length - 1) {
               nextVideoId.value = favoritesList.value[index + 1].id
@@ -238,7 +251,8 @@ export default {
           
           // 获取前一个视频ID
           try {
-            const prevRes = await fetch(`/api/videos/prev/${id}`)
+            const baseUrl = getBaseUrl()
+            const prevRes = await fetch(`${baseUrl}/videos/prev/${id}`)
             if (prevRes.ok) {
               const prevData = await prevRes.json()
               prevVideoId.value = prevData.id
@@ -268,10 +282,15 @@ export default {
         
         const data = await res.json()
         if (data.items && data.items.length > 0) {
+          playlistVideos.value = data.items
           const videoIds = data.items.map(v => v.id)
           const currentIndex = videoIds.indexOf(parseInt(currentId))
           
           if (currentIndex !== -1) {
+            // 设置卡片计数
+            currentVideoIndex.value = currentIndex
+            totalVideos.value = videoIds.length
+            
             // 设置下一个视频ID
             if (currentIndex < videoIds.length - 1) {
               nextVideoId.value = videoIds[currentIndex + 1]
@@ -525,6 +544,13 @@ export default {
         // 设置滑动方向 - 向上滑动加载下一个（新视频从上方进入）
         document.documentElement.style.setProperty('--slide-direction', '100%')
         
+        // 更新卡片索引（当前索引+1）
+        if (currentVideoIndex.value !== -1 && currentVideoIndex.value < totalVideos.value - 1) {
+          const newCardIndex = currentVideoIndex.value + 1
+          sessionStorage.setItem('videoListCardIndex', newCardIndex.toString())
+          console.log(`更新卡片索引: ${currentVideoIndex.value} -> ${newCardIndex}`)
+        }
+        
         // 保持当前页面上下文
         const queryParams = {}
         if (isFavoritesPage.value) {
@@ -554,6 +580,13 @@ export default {
         isTransitioning.value = true
         // 设置滑动方向 - 向下滑动加载前一个（新视频从下方进入）
         document.documentElement.style.setProperty('--slide-direction', '-100%')
+        
+        // 更新卡片索引（当前索引-1）
+        if (currentVideoIndex.value !== -1 && currentVideoIndex.value > 0) {
+          const newCardIndex = currentVideoIndex.value - 1
+          sessionStorage.setItem('videoListCardIndex', newCardIndex.toString())
+          console.log(`更新卡片索引: ${currentVideoIndex.value} -> ${newCardIndex}`)
+        }
         
         // 保持当前页面上下文
         const queryParams = {}
@@ -785,7 +818,10 @@ export default {
       seekAmount,
       seekProgress,
       videoDuration,
-      formatTime
+      formatTime,
+      // 卡片计数相关状态
+      currentVideoIndex,
+      totalVideos
     }
   }
 }
@@ -832,8 +868,14 @@ export default {
   font-size: 1.2rem;
   font-weight: bold;
   text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   word-break: break-all;
+}
+
+.video-counter {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
 }
 
 .play-button, .loading-indicator {

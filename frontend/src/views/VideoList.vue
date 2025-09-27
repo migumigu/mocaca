@@ -68,7 +68,7 @@
 </template>
 
 <script>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import NavIcons from '../components/icons/NavIcons.vue'
 
@@ -88,8 +88,61 @@ export default {
     const currentPlaylistType = ref('latest') // 当前播放列表类型
     const randomSeed = ref(Date.now()) // 随机种子，确保随机列表一致性
     
+    // 缓存相关状态
+    const cacheKey = ref('')
+    const cachedData = ref(null)
+    
 
     
+    // 生成缓存键
+    const generateCacheKey = () => {
+      const keyParts = [
+        'videoList',
+        currentPlaylistType.value,
+        currentPlaylistType.value === 'random' ? randomSeed.value : 'latest'
+      ]
+      return keyParts.join(':')
+    }
+
+    // 保存缓存数据
+    const saveCacheData = () => {
+      const cacheData = {
+        videos: videos.value,
+        page: page.value,
+        hasMore: hasMore.value,
+        scrollPosition: videoGrid.value ? videoGrid.value.scrollTop : 0,
+        timestamp: Date.now()
+      }
+      const key = generateCacheKey()
+      sessionStorage.setItem(key, JSON.stringify(cacheData))
+      console.log(`缓存数据已保存: ${key}, 视频数量: ${videos.value.length}`)
+    }
+
+    // 恢复缓存数据
+    const restoreCacheData = () => {
+      const key = generateCacheKey()
+      const cached = sessionStorage.getItem(key)
+      if (cached) {
+        try {
+          const cacheData = JSON.parse(cached)
+          // 检查缓存是否过期（5分钟内有效）
+          if (Date.now() - cacheData.timestamp < 5 * 60 * 1000) {
+            videos.value = cacheData.videos
+            page.value = cacheData.page
+            hasMore.value = cacheData.hasMore
+            console.log(`缓存数据已恢复: ${key}, 视频数量: ${videos.value.length}`)
+            return true
+          } else {
+            console.log(`缓存已过期: ${key}`)
+            sessionStorage.removeItem(key)
+          }
+        } catch (error) {
+          console.error('恢复缓存数据失败:', error)
+        }
+      }
+      return false
+    }
+
     const handleScroll = () => {
       const container = videoGrid.value
       if (container && container.scrollTop + container.clientHeight >= container.scrollHeight - 100) {
@@ -114,7 +167,7 @@ export default {
       loadVideos()
     }
 
-    onMounted(() => {
+    onMounted(async () => {
       // 检查URL查询参数，设置正确的activeTab
       if (route.query.playlistType === 'random') {
         activeTab.value = 'random'
@@ -124,25 +177,71 @@ export default {
         }
       }
       
-      // 加载视频数据，完成后恢复滚动位置
-      loadVideos().then(() => {
-        // 数据加载完成后恢复滚动位置
-        if (route.query.cardIndex && videoGrid.value && videos.value.length > 0) {
-          const cardIndex = parseInt(route.query.cardIndex)
-          const cardHeight = 200 // 估算每个卡片的高度（包括间距）
-          const scrollPosition = cardIndex * cardHeight
-          
-          // 使用 setTimeout 确保 DOM 已完全渲染
-          setTimeout(() => {
-            videoGrid.value.scrollTop = scrollPosition
-          }, 100)
+      // 生成当前缓存键
+      cacheKey.value = generateCacheKey()
+      
+      // 尝试从缓存恢复数据
+      const hasCache = restoreCacheData()
+      
+      if (!hasCache) {
+        // 如果没有缓存，需要加载数据
+        const targetCardIndex = route.query.cardIndex ? parseInt(route.query.cardIndex) : -1
+        
+        // 计算需要加载的页数来包含目标卡片索引
+        const videosPerPage = 20 // 每页20个视频
+        const requiredPages = targetCardIndex >= 0 ? Math.ceil((targetCardIndex + 1) / videosPerPage) : 1
+        
+        console.log(`目标卡片索引: ${targetCardIndex}, 需要加载页数: ${requiredPages}`)
+        
+        // 加载视频数据
+        for (let i = 0; i < requiredPages; i++) {
+          await loadVideos()
+          if (!hasMore.value) break // 如果没有更多数据，停止加载
         }
-      })
+      }
+      
+      // 数据加载完成后恢复滚动位置
+      const targetCardIndex = route.query.cardIndex !== undefined ? parseInt(route.query.cardIndex) : 0
+      console.log(`恢复滚动位置: cardIndex=${targetCardIndex}`)
+      
+      // 等待DOM完全渲染
+      await nextTick()
+      
+      if (videoGrid.value && videos.value.length > 0) {
+        const cards = document.querySelectorAll('.video-card')
+        console.log(`DOM渲染完成: cards.length=${cards.length}, cardIndex=${targetCardIndex}`)
+        
+        if (cards.length > targetCardIndex && targetCardIndex >= 0) {
+          // 计算目标卡片的位置
+          const targetCard = cards[targetCardIndex]
+          const cardTop = targetCard.offsetTop
+          
+          // 滚动到目标卡片位置，稍微向上偏移一些让卡片更居中
+          videoGrid.value.scrollTop = Math.max(0, cardTop - 100)
+          console.log(`滚动到卡片位置: cardIndex=${targetCardIndex}, cardTop=${cardTop}, scrollTop=${videoGrid.value.scrollTop}`)
+        } else {
+          // 如果卡片索引超出范围或为负数，默认滚动到顶部
+          videoGrid.value.scrollTop = 0
+          console.log(`滚动到顶部，卡片索引无效: cardIndex=${targetCardIndex}, 实际卡片数量=${cards.length}`)
+        }
+      } else {
+        console.warn(`无法恢复滚动位置: videoGrid=${!!videoGrid.value}, videos.length=${videos.value.length}`)
+      }
       
       // 页面加载后，自动为前几个视频生成缩略图
       setTimeout(() => {
         preGenerateThumbnails()
       }, 2000)
+      
+      // 添加页面离开时的缓存保存
+      window.addEventListener('beforeunload', saveCacheData)
+    })
+    
+    // 组件卸载时清理事件监听器
+    onUnmounted(() => {
+      if (saveCacheData) {
+        window.removeEventListener('beforeunload', saveCacheData)
+      }
     })
 
     const preGenerateThumbnails = async (startIndex = 0, count = 5) => {
@@ -258,12 +357,10 @@ export default {
     }
 
     const openPlayer = (video) => {
-      // 保存当前显示的卡片索引
-      if (videoGrid.value && videos.value.length > 0) {
-        const scrollTop = videoGrid.value.scrollTop
-        const cardHeight = 200 // 估算每个卡片的高度（包括间距）
-        const visibleCardIndex = Math.floor(scrollTop / cardHeight)
-        sessionStorage.setItem('videoListCardIndex', visibleCardIndex.toString())
+      // 保存当前点击的卡片在数组中的实际索引
+      const cardIndex = videos.value.findIndex(v => v.id === video.id)
+      if (cardIndex !== -1) {
+        sessionStorage.setItem('videoListCardIndex', cardIndex.toString())
       }
       
       router.push({
