@@ -68,7 +68,7 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import NavIcons from '../components/icons/NavIcons.vue'
 
@@ -124,7 +124,20 @@ export default {
         }
       }
       
-      loadVideos()
+      // 加载视频数据，完成后恢复滚动位置
+      loadVideos().then(() => {
+        // 数据加载完成后恢复滚动位置
+        if (route.query.cardIndex && videoGrid.value && videos.value.length > 0) {
+          const cardIndex = parseInt(route.query.cardIndex)
+          const cardHeight = 200 // 估算每个卡片的高度（包括间距）
+          const scrollPosition = cardIndex * cardHeight
+          
+          // 使用 setTimeout 确保 DOM 已完全渲染
+          setTimeout(() => {
+            videoGrid.value.scrollTop = scrollPosition
+          }, 100)
+        }
+      })
       
       // 页面加载后，自动为前几个视频生成缩略图
       setTimeout(() => {
@@ -169,7 +182,7 @@ export default {
     
     // 在loadVideos函数中添加缩略图预生成
     const loadVideos = async () => {
-      if (loading.value || !hasMore.value) return
+      if (loading.value || !hasMore.value) return Promise.resolve()
       
       loading.value = true
       try {
@@ -245,6 +258,14 @@ export default {
     }
 
     const openPlayer = (video) => {
+      // 保存当前显示的卡片索引
+      if (videoGrid.value && videos.value.length > 0) {
+        const scrollTop = videoGrid.value.scrollTop
+        const cardHeight = 200 // 估算每个卡片的高度（包括间距）
+        const visibleCardIndex = Math.floor(scrollTop / cardHeight)
+        sessionStorage.setItem('videoListCardIndex', visibleCardIndex.toString())
+      }
+      
       router.push({
         name: 'Player',
         params: { id: video.id },

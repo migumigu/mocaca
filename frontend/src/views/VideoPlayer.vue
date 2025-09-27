@@ -389,6 +389,13 @@ export default {
         if (playlistSeed.value) {
           queryParams.seed = playlistSeed.value
         }
+        
+        // 添加卡片索引恢复参数
+        const cardIndex = sessionStorage.getItem('videoListCardIndex')
+        if (cardIndex) {
+          queryParams.cardIndex = cardIndex
+        }
+        
         router.push({ 
           path: '/', 
           query: { 
@@ -398,7 +405,12 @@ export default {
         })
       } else {
         // 默认返回到首页（最新列表）
-        router.push('/')
+        const cardIndex = sessionStorage.getItem('videoListCardIndex')
+        const queryParams = cardIndex ? { cardIndex } : {}
+        router.push({ 
+          path: '/', 
+          query: queryParams
+        })
       }
     }
 
