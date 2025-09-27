@@ -55,6 +55,11 @@ export default defineConfig({
         target: 'http://localhost:5003',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '/api') // 保持路径不变
+      },
+      '/thumbnails': {
+        target: 'http://localhost:5003',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/thumbnails/, '/thumbnails') // 保持路径不变
       }
     }
   }

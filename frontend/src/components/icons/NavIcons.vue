@@ -18,6 +18,11 @@
   <svg v-else-if="name === 'user'" class="nav-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
     <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
   </svg>
+
+  <!-- 锁图标 -->
+  <svg v-else-if="name === 'lock'" class="nav-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm9 14H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z"/>
+  </svg>
 </template>
 
 <script>
@@ -27,7 +32,7 @@ export default {
     name: {
       type: String,
       required: true,
-      validator: (value) => ['home', 'folder', 'favorite', 'user'].includes(value)
+      validator: (value) => ['home', 'folder', 'favorite', 'user', 'lock'].includes(value)
     }
   }
 }
