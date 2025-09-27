@@ -672,6 +672,72 @@ def change_password():
         db.session.rollback()
         return jsonify({'error': f'密码修改失败: {str(e)}'}), 500
 
+# 管理员API - 批量生成缩略图
+@app.route('/api/admin/generate-thumbnails', methods=['POST'])
+def admin_generate_thumbnails():
+    """为所有没有缩略图的视频生成缩略图"""
+    # 检查用户权限
+    user_id = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not user_id:
+        return jsonify({'error': '未授权'}), 401
+    
+    user = User.query.get(user_id)
+    if not user or not user.is_admin:
+        return jsonify({'error': '权限不足'}), 403
+    
+    try:
+        # 获取所有没有缩略图的视频
+        videos_without_thumbnails = Video.query.filter(
+            (Video.thumbnail_path.is_(None)) | (Video.thumbnail_path == '')
+        ).all()
+        
+        total_videos = len(videos_without_thumbnails)
+        generated_count = 0
+        failed_videos = []
+        
+        print(f"🎯 开始为 {total_videos} 个视频生成缩略图")
+        
+        for i, video in enumerate(videos_without_thumbnails):
+            print(f"🔄 处理第 {i+1}/{total_videos} 个视频: {video.filename}")
+            
+            video_path = os.path.join(app.config['MEDIA_FOLDER'], video.filename)
+            if not os.path.exists(video_path):
+                print(f"❌ 视频文件不存在: {video_path}")
+                failed_videos.append({'video_id': video.id, 'filename': video.filename, 'error': '视频文件不存在'})
+                continue
+            
+            # 创建缩略图文件名
+            thumbnail_filename = f"{video.id}_{os.path.basename(video.filename)}.jpg"
+            thumbnail_path = os.path.join(app.config['THUMBNAIL_FOLDER'], thumbnail_filename)
+            
+            # 生成缩略图
+            if generate_thumbnail(video_path, thumbnail_path):
+                # 更新数据库
+                video.thumbnail_path = thumbnail_path
+                generated_count += 1
+                print(f"✅ 成功生成缩略图: {thumbnail_filename}")
+            else:
+                failed_videos.append({'video_id': video.id, 'filename': video.filename, 'error': '缩略图生成失败'})
+                print(f"❌ 缩略图生成失败: {video.filename}")
+        
+        db.session.commit()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'缩略图生成完成，成功: {generated_count}，失败: {len(failed_videos)}',
+            'total_videos': total_videos,
+            'generated_count': generated_count,
+            'failed_count': len(failed_videos),
+            'failed_videos': failed_videos
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ 批量生成缩略图失败: {str(e)}")
+        import traceback
+        print(f"🔍 详细错误信息: {traceback.format_exc()}")
+        return jsonify({'error': f'批量生成缩略图失败: {str(e)}'}), 500
+
 # 管理员API - 刷新文件列表
 @app.route('/api/admin/refresh-files', methods=['POST'])
 def admin_refresh_files():

@@ -197,6 +197,15 @@
             </button>
             <p v-if="refreshMessage" class="refresh-message">{{ refreshMessage }}</p>
           </div>
+          
+          <div class="setting-item">
+            <h4>缩略图管理</h4>
+            <p class="setting-description">为所有没有缩略图的视频生成缩略图。视频文件过多时，会有比较久的耗时。</p>
+            <button @click="generateThumbnails" :disabled="generatingThumbnails" class="refresh-btn">
+              {{ generatingThumbnails ? '生成中...' : '生成缩略图' }}
+            </button>
+            <p v-if="thumbnailMessage" class="refresh-message">{{ thumbnailMessage }}</p>
+          </div>
         </div>
         
         <!-- 系统设置 -->
@@ -264,6 +273,8 @@ export default {
       confirmPassword: ''
     })
     const passwordExpanded = ref(false)
+    const generatingThumbnails = ref(false)
+    const thumbnailMessage = ref('')
 
     const getBaseUrl = () => {
       return import.meta.env.DEV 
@@ -454,6 +465,38 @@ export default {
       }
     }
 
+    const generateThumbnails = async () => {
+      if (!confirm('确定要为所有没有缩略图的视频生成缩略图吗？视频文件过多时，会有比较久的耗时。')) {
+        return
+      }
+      
+      generatingThumbnails.value = true
+      thumbnailMessage.value = ''
+      
+      try {
+        const baseUrl = getBaseUrl()
+        const res = await fetch(`${baseUrl}/admin/generate-thumbnails`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.value.id}`
+          }
+        })
+        
+        if (res.ok) {
+          const data = await res.json()
+          thumbnailMessage.value = data.message || '缩略图生成成功'
+        } else {
+          const errorData = await res.json()
+          thumbnailMessage.value = errorData.error || '生成失败'
+        }
+      } catch (error) {
+        thumbnailMessage.value = '网络错误，请重试'
+      } finally {
+        generatingThumbnails.value = false
+      }
+    }
+
     onMounted(() => {
       // 检查本地存储是否有登录用户
       const savedUser = localStorage.getItem('currentUser')
@@ -478,6 +521,8 @@ export default {
       passwordMessage,
       passwordForm,
       passwordExpanded,
+      generatingThumbnails,
+      thumbnailMessage,
       handleLogin,
       handleLogout,
       removeFileExtension,
@@ -486,7 +531,8 @@ export default {
       switchProfileTab,
       switchSettingTab,
       changePassword,
-      refreshFileList
+      refreshFileList,
+      generateThumbnails
     }
   }
 }
