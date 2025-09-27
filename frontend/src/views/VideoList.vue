@@ -127,6 +127,13 @@ export default {
           const cacheData = JSON.parse(cached)
           // 检查缓存是否过期（5分钟内有效）
           if (Date.now() - cacheData.timestamp < 5 * 60 * 1000) {
+            // 发现页面随机列表：如果缓存数据超过200个视频，截断到200个
+            if (activeTab.value === 'random' && cacheData.videos.length > 200) {
+              cacheData.videos = cacheData.videos.slice(0, 200)
+              cacheData.hasMore = false
+              console.log(`发现页面随机列表缓存数据已截断: ${cacheData.videos.length}个视频`)
+            }
+            
             videos.value = cacheData.videos
             page.value = cacheData.page
             hasMore.value = cacheData.hasMore
@@ -189,7 +196,19 @@ export default {
         
         // 计算需要加载的页数来包含目标卡片索引
         const videosPerPage = 20 // 每页20个视频
-        const requiredPages = targetCardIndex >= 0 ? Math.ceil((targetCardIndex + 1) / videosPerPage) : 1
+        let requiredPages = targetCardIndex >= 0 ? Math.ceil((targetCardIndex + 1) / videosPerPage) : 1
+        
+        // 发现页面随机列表限制：最多加载10页（200个视频）
+        if (activeTab.value === 'random') {
+          // 如果目标索引超过200，限制为最多200个视频
+          if (targetCardIndex >= 200) {
+            requiredPages = 10 // 最多10页，200个视频
+            console.log(`发现页面随机列表：目标索引${targetCardIndex}超过200，限制为最多200个视频`)
+          } else {
+            requiredPages = Math.min(requiredPages, 10) // 最多10页，200个视频
+          }
+          console.log(`发现页面随机列表限制：最多加载${requiredPages}页（200个视频）`)
+        }
         
         console.log(`目标卡片索引: ${targetCardIndex}, 需要加载页数: ${requiredPages}`)
         
@@ -202,27 +221,35 @@ export default {
       
       // 数据加载完成后恢复滚动位置
       const targetCardIndex = route.query.cardIndex !== undefined ? parseInt(route.query.cardIndex) : 0
-      console.log(`恢复滚动位置: cardIndex=${targetCardIndex}`)
+      
+      // 发现页面随机列表：如果目标索引超过200，限制为199（最后一个有效索引）
+      let actualCardIndex = targetCardIndex
+      if (activeTab.value === 'random' && targetCardIndex >= 200) {
+        actualCardIndex = 199
+        console.log(`发现页面随机列表：目标索引${targetCardIndex}超过200，限制为${actualCardIndex}`)
+      }
+      
+      console.log(`恢复滚动位置: cardIndex=${targetCardIndex}, 实际索引=${actualCardIndex}`)
       
       // 等待DOM完全渲染
       await nextTick()
       
       if (videoGrid.value && videos.value.length > 0) {
         const cards = document.querySelectorAll('.video-card')
-        console.log(`DOM渲染完成: cards.length=${cards.length}, cardIndex=${targetCardIndex}`)
+        console.log(`DOM渲染完成: cards.length=${cards.length}, 实际索引=${actualCardIndex}`)
         
-        if (cards.length > targetCardIndex && targetCardIndex >= 0) {
+        if (cards.length > actualCardIndex && actualCardIndex >= 0) {
           // 计算目标卡片的位置
-          const targetCard = cards[targetCardIndex]
+          const targetCard = cards[actualCardIndex]
           const cardTop = targetCard.offsetTop
           
           // 滚动到目标卡片位置，稍微向上偏移一些让卡片更居中
           videoGrid.value.scrollTop = Math.max(0, cardTop - 100)
-          console.log(`滚动到卡片位置: cardIndex=${targetCardIndex}, cardTop=${cardTop}, scrollTop=${videoGrid.value.scrollTop}`)
+          console.log(`滚动到卡片位置: 实际索引=${actualCardIndex}, cardTop=${cardTop}, scrollTop=${videoGrid.value.scrollTop}`)
         } else {
           // 如果卡片索引超出范围或为负数，默认滚动到顶部
           videoGrid.value.scrollTop = 0
-          console.log(`滚动到顶部，卡片索引无效: cardIndex=${targetCardIndex}, 实际卡片数量=${cards.length}`)
+          console.log(`滚动到顶部，卡片索引无效: 实际索引=${actualCardIndex}, 实际卡片数量=${cards.length}`)
         }
       } else {
         console.warn(`无法恢复滚动位置: videoGrid=${!!videoGrid.value}, videos.length=${videos.value.length}`)
@@ -283,6 +310,13 @@ export default {
     const loadVideos = async () => {
       if (loading.value || !hasMore.value) return Promise.resolve()
       
+      // 发现页面随机列表限制在200个视频以内
+      if (activeTab.value === 'random' && videos.value.length >= 200) {
+        hasMore.value = false
+        console.log('发现页面随机列表已到达200个视频限制')
+        return Promise.resolve()
+      }
+      
       loading.value = true
       try {
         // 根据环境动态获取API基础URL
@@ -302,6 +336,15 @@ export default {
         
         if (activeTab.value === 'random') {
           apiUrl += `&random=true&seed=${randomSeed.value}`
+          // 发现页面随机列表限制每页加载数量，确保不超过200个
+          const remaining = 200 - videos.value.length
+          if (remaining > 0) {
+            apiUrl += `&per_page=${Math.min(20, remaining)}`
+          } else {
+            hasMore.value = false
+            loading.value = false
+            return Promise.resolve()
+          }
         }
         
         const res = await fetch(apiUrl, {
@@ -319,6 +362,13 @@ export default {
           videos.value = [...videos.value, ...data.items]
           hasMore.value = data.has_next
           page.value += 1
+          
+          // 发现页面随机列表：达到200个视频后停止加载
+          if (activeTab.value === 'random' && videos.value.length >= 200) {
+            hasMore.value = false
+            console.log('发现页面随机列表已到达200个视频限制')
+          }
+          
           // 即使视频不足20个也显示
           if (data.items.length < 20) {
             hasMore.value = false

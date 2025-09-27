@@ -153,35 +153,40 @@ def update_next_ids():
 def get_video_info(video_id):
     """获取视频信息(包含下一个视频ID)"""
     video = Video.query.get_or_404(video_id)
+    
+    # 查找下一个视频（按ID顺序，更小的ID在前）
+    next_video = Video.query.filter(Video.id > video_id).order_by(Video.id.asc()).first()
+    next_id = next_video.id if next_video else None
+    
     return jsonify({
         'id': video.id,
         'filename': video.filename,
         'url': f'/api/videos/file/{video.filename}',
-        'next_id': video.next_id
+        'next_id': next_id
     })
 
 @app.route('/api/videos/prev/<int:video_id>')
 def get_prev_video(video_id):
     """获取前一个视频信息"""
-    # 查找指向当前视频的视频（即前一个视频）
-    prev_video = Video.query.filter_by(next_id=video_id).first()
+    # 查找前一个视频（按ID顺序，更大的ID在前）
+    prev_video = Video.query.filter(Video.id < video_id).order_by(Video.id.desc()).first()
     
     if prev_video:
         return jsonify({
             'id': prev_video.id,
             'filename': prev_video.filename,
             'url': f'/api/videos/file/{prev_video.filename}',
-            'next_id': prev_video.next_id
+            'next_id': prev_video.id
         })
     else:
-        # 如果没有前一个视频，返回列表中的最后一个视频（循环播放）
-        last_video = Video.query.filter(Video.next_id.is_(None)).first()
+        # 如果没有前一个视频，返回最大的ID视频（循环播放）
+        last_video = Video.query.order_by(Video.id.desc()).first()
         if last_video:
             return jsonify({
                 'id': last_video.id,
                 'filename': last_video.filename,
                 'url': f'/api/videos/file/{last_video.filename}',
-                'next_id': last_video.next_id
+                'next_id': last_video.id
             })
         return jsonify({'error': 'No previous video found'}), 404
 
@@ -195,6 +200,11 @@ def get_video_file(filename):
         basename = os.path.basename(video_path)
         return send_from_directory(dirname, basename)
     return jsonify({'error': 'Video not found'}), 404
+
+@app.route('/thumbnails/<filename>')
+def serve_thumbnail(filename):
+    """直接提供缩略图静态文件访问"""
+    return send_from_directory(app.config['THUMBNAIL_FOLDER'], filename)
 
 @app.route('/api/scan', methods=['POST'])
 def scan_videos():
@@ -348,7 +358,7 @@ def list_videos():
             'items': [{
                 'id': v.id,
                 'filename': v.filename,
-                'thumbnail_url': f'/api/thumbnail/{v.id}' if v.thumbnail_path else None
+                'thumbnail_url': f'/thumbnails/{os.path.basename(v.thumbnail_path)}' if v.thumbnail_path else None
             } for v in ordered_videos],
             'has_next': has_next,
             'total': total_videos
@@ -374,7 +384,7 @@ def list_videos():
             'items': [{
                 'id': v.id,
                 'filename': v.filename,
-                'thumbnail_url': f'/api/thumbnail/{v.id}' if v.thumbnail_path else None
+                'thumbnail_url': f'/thumbnails/{os.path.basename(v.thumbnail_path)}' if v.thumbnail_path else None
             } for v in pagination.items],
             'has_next': pagination.has_next,
             'total': pagination.total
@@ -402,12 +412,24 @@ def login():
 
 @app.route('/api/favorites', methods=['GET'])
 def get_favorites():
-    """获取用户的收藏列表"""
+    """获取用户的收藏列表（支持分页）"""
     user_id = request.args.get('user_id', type=int)
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    
     if not user_id:
         return jsonify({'error': '用户ID不能为空'}), 400
     
-    favorites = Favorite.query.filter_by(user_id=user_id).all()
+    # 获取收藏总数
+    total_favorites = Favorite.query.filter_by(user_id=user_id).count()
+    
+    # 分页查询收藏记录
+    favorites = Favorite.query.filter_by(user_id=user_id)\
+        .order_by(Favorite.created_at.desc())\
+        .offset((page - 1) * per_page)\
+        .limit(per_page)\
+        .all()
+    
     favorite_videos = []
     for fav in favorites:
         video = Video.query.get(fav.video_id)
@@ -415,10 +437,16 @@ def get_favorites():
             favorite_videos.append({
                 'id': video.id,
                 'filename': video.filename,
-                'thumbnail_url': f'/api/thumbnail/{video.id}' if video.thumbnail_path else None
+                'thumbnail_url': f'/thumbnails/{os.path.basename(video.thumbnail_path)}' if video.thumbnail_path else None
             })
     
-    return jsonify(favorite_videos)
+    return jsonify({
+        'items': favorite_videos,
+        'total': total_favorites,
+        'page': page,
+        'per_page': per_page,
+        'total_pages': (total_favorites + per_page - 1) // per_page
+    })
 
 @app.route('/api/favorites', methods=['POST'])
 def add_favorite():
@@ -452,6 +480,44 @@ def remove_favorite():
         return jsonify({'status': 'success'})
     return jsonify({'error': '收藏记录不存在'}), 404
 
+@app.route('/api/favorites/navigation/<int:video_id>', methods=['GET'])
+def get_favorites_navigation(video_id):
+    """获取收藏列表中指定视频的导航信息（下一个和前一个视频）"""
+    user_id = request.args.get('user_id', type=int)
+    if not user_id:
+        return jsonify({'error': '用户ID不能为空'}), 400
+    
+    # 获取用户的所有收藏视频ID（按收藏时间倒序）
+    favorites = Favorite.query.filter_by(user_id=user_id)\
+        .order_by(Favorite.created_at.desc())\
+        .all()
+    
+    favorite_video_ids = [fav.video_id for fav in favorites]
+    
+    # 查找当前视频在收藏列表中的位置
+    try:
+        current_index = favorite_video_ids.index(video_id)
+    except ValueError:
+        return jsonify({'error': '视频不在收藏列表中'}), 404
+    
+    # 获取下一个和前一个视频ID
+    next_video_id = None
+    prev_video_id = None
+    
+    if current_index > 0:
+        prev_video_id = favorite_video_ids[current_index - 1]
+    
+    if current_index < len(favorite_video_ids) - 1:
+        next_video_id = favorite_video_ids[current_index + 1]
+    
+    return jsonify({
+        'current_video_id': video_id,
+        'next_video_id': next_video_id,
+        'prev_video_id': prev_video_id,
+        'current_index': current_index,
+        'total_favorites': len(favorite_video_ids)
+    })
+
 @app.route('/api/favorites/check', methods=['GET'])
 def check_favorite():
     """检查是否已收藏"""
@@ -480,7 +546,7 @@ def get_dislikes():
             dislike_videos.append({
                 'id': video.id,
                 'filename': video.filename,
-                'thumbnail_url': f'/api/thumbnail/{video.id}' if video.thumbnail_path else None
+                'thumbnail_url': f'/thumbnails/{os.path.basename(video.thumbnail_path)}' if video.thumbnail_path else None
             })
     
     return jsonify(dislike_videos)

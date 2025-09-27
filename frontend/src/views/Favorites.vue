@@ -49,6 +49,17 @@
             </div>
           </div>
         </div>
+        
+        <!-- 加载更多指示器 -->
+        <div v-if="loading && favorites.length > 0" class="loading-more">
+          <div class="loading-spinner"></div>
+          <p>加载更多...</p>
+        </div>
+        
+        <!-- 没有更多数据提示 -->
+        <div v-if="!hasMore && favorites.length > 0" class="no-more-data">
+          <p>已加载全部收藏视频</p>
+        </div>
       </div>
     </div>
 
@@ -75,7 +86,7 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import NavIcons from '../components/icons/NavIcons.vue'
 
@@ -88,6 +99,9 @@ export default {
     const currentUser = ref(null)
     const favorites = ref([])
     const loading = ref(false)
+    const hasMore = ref(true)
+    const currentPage = ref(1)
+    const totalPages = ref(1)
 
     const getBaseUrl = () => {
       return import.meta.env.DEV 
@@ -95,20 +109,52 @@ export default {
         : `${window.location.protocol}//${window.location.hostname}:5003/api`
     }
 
-    const loadFavorites = async () => {
-      if (!currentUser.value) return
+    const loadFavorites = async (page = 1, append = false) => {
+      if (!currentUser.value || loading.value) return
       
       loading.value = true
       try {
         const baseUrl = getBaseUrl()
-        const res = await fetch(`${baseUrl}/favorites?user_id=${currentUser.value.id}`)
+        const res = await fetch(`${baseUrl}/favorites?user_id=${currentUser.value.id}&page=${page}&per_page=50`)
         if (res.ok) {
-          favorites.value = await res.json()
+          const data = await res.json()
+          
+          if (append) {
+            // 追加模式：将新数据添加到现有列表
+            favorites.value = [...favorites.value, ...(data.items || [])]
+          } else {
+            // 首次加载：替换整个列表
+            favorites.value = data.items || []
+          }
+          
+          currentPage.value = data.page
+          totalPages.value = data.total_pages
+          hasMore.value = data.page < data.total_pages
         }
       } catch (error) {
         console.error('获取收藏列表失败:', error)
       } finally {
         loading.value = false
+      }
+    }
+
+    // 加载更多收藏视频
+    const loadMoreFavorites = async () => {
+      if (hasMore.value && !loading.value) {
+        await loadFavorites(currentPage.value + 1, true)
+      }
+    }
+
+    // 监听滚动事件，实现无限滚动
+    const handleScroll = () => {
+      const scrollElement = document.documentElement
+      const scrollTop = scrollElement.scrollTop
+      const scrollHeight = scrollElement.scrollHeight
+      const clientHeight = scrollElement.clientHeight
+      
+      // 距离底部100px时触发加载
+      if (scrollTop + clientHeight >= scrollHeight - 100) {
+        loadMoreFavorites()
       }
     }
 
@@ -143,6 +189,14 @@ export default {
         currentUser.value = JSON.parse(savedUser)
         loadFavorites()
       }
+      
+      // 添加滚动监听
+      window.addEventListener('scroll', handleScroll)
+    })
+
+    // 组件卸载时移除滚动监听
+    onUnmounted(() => {
+      window.removeEventListener('scroll', handleScroll)
     })
 
     return {
@@ -370,5 +424,39 @@ export default {
 
 .nav-item span {
   font-size: 0.7rem;
+}
+
+/* 加载更多指示器样式 */
+.loading-more {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 20px;
+  color: #666;
+}
+
+.loading-more .loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #ff6b81;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 8px;
+}
+
+.loading-more p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+/* 没有更多数据提示样式 */
+.no-more-data {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 20px;
+  color: #999;
+  font-size: 0.9rem;
+  border-top: 1px solid #eee;
+  margin-top: 10px;
 }
 </style>

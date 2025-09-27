@@ -97,6 +97,20 @@
               <div class="seek-progress" :style="{ width: seekProgress + '%' }"></div>
             </div>
             <div class="seek-time">
+            
+        <!-- 发现页面底部刷新按钮 -->
+        <div v-if="playlistType === 'random' && showRefreshPrompt" class="refresh-prompt">
+          <div class="refresh-content">
+            <div class="refresh-text">已到达当前随机列表末尾</div>
+            <button class="refresh-button" @click.stop="generateNewRandomList">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 4v6h-6"></path>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+              </svg>
+              生成新随机列表
+            </button>
+          </div>
+        </div>
               <span>{{ formatTime(seekCurrentTime) }}</span>
               <span class="seek-duration">{{ formatTime(videoDuration) }}</span>
             </div>
@@ -163,6 +177,9 @@ export default {
     const currentVideoIndex = ref(-1)
     const totalVideos = ref(0)
     const playlistVideos = ref([])
+    
+    // 边界检测状态
+    const showRefreshPrompt = ref(false)
 
     // 检查是否在收藏页面
     const isFavoritesPage = computed(() => {
@@ -183,8 +200,8 @@ export default {
     const favoritesList = ref([])
     const currentFavoritesIndex = ref(-1)
 
-    // 加载收藏列表
-    const loadFavoritesList = async () => {
+    // 加载收藏列表导航信息（使用后端API）
+    const loadFavoritesNavigation = async (videoId) => {
       if (!isFavoritesPage.value) return
       
       try {
@@ -193,14 +210,18 @@ export default {
         
         const user = JSON.parse(savedUser)
         const baseUrl = getBaseUrl()
-        const res = await fetch(`${baseUrl}/favorites?user_id=${user.id}`)
+        const res = await fetch(`${baseUrl}/favorites/navigation/${videoId}?user_id=${user.id}`)
         
         if (res.ok) {
           const data = await res.json()
-          favoritesList.value = data || [] // 直接使用返回的数组，不是data.favorites
+          // 设置导航信息
+          nextVideoId.value = data.next_video_id
+          prevVideoId.value = data.prev_video_id
+          currentVideoIndex.value = data.current_index
+          totalVideos.value = data.total_favorites
         }
       } catch (error) {
-        console.error('加载收藏列表失败:', error)
+        console.error('加载收藏列表导航失败:', error)
       }
     }
 
@@ -217,31 +238,9 @@ export default {
           url: `${baseUrl}/videos/file/${encodeURIComponent(data.filename)}`
         }
         
-        // 如果在收藏页面，按收藏列表顺序设置上下视频
+        // 如果在收藏页面，使用后端导航API获取上下视频
         if (isFavoritesPage.value) {
-          await loadFavoritesList()
-          const index = favoritesList.value.findIndex(fav => fav.id === parseInt(id))
-          currentFavoritesIndex.value = index
-          
-          if (index !== -1) {
-            // 设置卡片计数
-            currentVideoIndex.value = index
-            totalVideos.value = favoritesList.value.length
-            
-            // 设置下一个视频ID
-            if (index < favoritesList.value.length - 1) {
-              nextVideoId.value = favoritesList.value[index + 1].id
-            } else {
-              nextVideoId.value = null
-            }
-            
-            // 设置上一个视频ID
-            if (index > 0) {
-              prevVideoId.value = favoritesList.value[index - 1].id
-            } else {
-              prevVideoId.value = null
-            }
-          }
+          await loadFavoritesNavigation(id)
         } else if (isPlaylistPage.value) {
           // 根据播放列表类型获取上下视频
           await loadPlaylistNavigation(id)
@@ -267,48 +266,109 @@ export default {
       }
     }
 
-    // 根据播放列表类型获取导航视频
+    // 根据播放列表类型获取导航视频（优化版：分页加载随机列表）
     const loadPlaylistNavigation = async (currentId) => {
       try {
         const baseUrl = getBaseUrl()
-        let apiUrl = `${baseUrl}/videos?page=1&per_page=100` // 获取足够多的视频用于导航
         
         if (playlistType.value === 'random') {
-          apiUrl += `&random=true&seed=${playlistSeed.value}`
-        }
-        
-        const res = await fetch(apiUrl)
-        if (!res.ok) throw new Error(`HTTP错误! 状态码: ${res.status}`)
-        
-        const data = await res.json()
-        if (data.items && data.items.length > 0) {
-          playlistVideos.value = data.items
-          const videoIds = data.items.map(v => v.id)
-          const currentIndex = videoIds.indexOf(parseInt(currentId))
+          // 发现页面（随机列表）：固定加载200个视频
+          let apiUrl = `${baseUrl}/videos?page=1&per_page=200&random=true`
           
-          if (currentIndex !== -1) {
-            // 设置卡片计数
-            currentVideoIndex.value = currentIndex
-            totalVideos.value = videoIds.length
-            
-            // 设置下一个视频ID
-            if (currentIndex < videoIds.length - 1) {
-              nextVideoId.value = videoIds[currentIndex + 1]
-            } else {
-              nextVideoId.value = null
+          // 如果有种子参数，使用相同的种子保持随机顺序一致
+          if (playlistSeed.value) {
+            apiUrl += `&seed=${playlistSeed.value}`
+          } else {
+            // 如果没有种子，生成一个新的种子并保存到URL
+            const newSeed = Math.floor(Math.random() * 1000000)
+            playlistSeed.value = newSeed
+            apiUrl += `&seed=${newSeed}`
+          }
+          
+          const res = await fetch(apiUrl)
+          if (res.ok) {
+            const data = await res.json()
+            if (data.items && data.items.length > 0) {
+              playlistVideos.value = data.items
+              const videoIds = data.items.map(v => v.id)
+              const currentIndex = videoIds.indexOf(parseInt(currentId))
+              
+              if (currentIndex !== -1) {
+                // 设置卡片计数（固定为200个视频）
+                currentVideoIndex.value = currentIndex
+                totalVideos.value = 200 // 固定200个视频
+                
+                // 设置下一个视频ID
+                if (currentIndex < videoIds.length - 1) {
+                  nextVideoId.value = videoIds[currentIndex + 1]
+                } else {
+                  nextVideoId.value = null
+                }
+                
+                // 设置上一个视频ID
+                if (currentIndex > 0) {
+                  prevVideoId.value = videoIds[currentIndex - 1]
+                } else {
+                  prevVideoId.value = null
+                }
+              }
             }
-            
-            // 设置上一个视频ID
-            if (currentIndex > 0) {
-              prevVideoId.value = videoIds[currentIndex - 1]
-            } else {
-              prevVideoId.value = null
+          }
+        } else {
+          // 最新页面：使用后端导航API
+          const [nextRes, prevRes] = await Promise.all([
+            fetch(`${baseUrl}/videos/${currentId}`),
+            fetch(`${baseUrl}/videos/prev/${currentId}`)
+          ])
+          
+          if (nextRes.ok) {
+            const nextData = await nextRes.json()
+            nextVideoId.value = nextData.next_id
+          }
+          
+          if (prevRes.ok) {
+            const prevData = await prevRes.json()
+            prevVideoId.value = prevData.id
+          }
+          
+          // 获取部分视频用于显示卡片计数
+          let apiUrl = `${baseUrl}/videos?page=1&per_page=50`
+          const res = await fetch(apiUrl)
+          if (res.ok) {
+            const data = await res.json()
+            if (data.items && data.items.length > 0) {
+              playlistVideos.value = data.items
+              const videoIds = data.items.map(v => v.id)
+              const currentIndex = videoIds.indexOf(parseInt(currentId))
+              
+              if (currentIndex !== -1) {
+                currentVideoIndex.value = currentIndex
+                totalVideos.value = data.total
+              }
             }
           }
         }
       } catch (error) {
         console.error('获取播放列表导航失败:', error)
       }
+    }
+
+    // 生成新的随机列表
+    const generateNewRandomList = () => {
+      // 生成新的随机种子
+      const newSeed = Math.floor(Math.random() * 1000000)
+      playlistSeed.value = newSeed
+      
+      // 重新加载当前视频，但使用新的随机种子
+      router.replace({
+        query: {
+          ...route.query,
+          seed: newSeed
+        }
+      })
+      
+      // 重新加载导航数据
+      loadPlaylistNavigation(props.id)
     }
 
     // 监听路由参数变化，更新视频
@@ -551,6 +611,15 @@ export default {
           console.log(`更新卡片索引: ${currentVideoIndex.value} -> ${newCardIndex}`)
         }
         
+        // 边界检测：如果是发现页面随机列表且到达第200个视频，显示刷新提示
+        if (playlistType.value === 'random' && currentVideoIndex.value === 199) {
+          showRefreshPrompt.value = true
+          // 延迟隐藏过渡效果，确保用户看到提示
+          setTimeout(() => {
+            showRefreshPrompt.value = false
+          }, 3000)
+        }
+        
         // 保持当前页面上下文
         const queryParams = {}
         if (isFavoritesPage.value) {
@@ -568,8 +637,10 @@ export default {
           query: queryParams 
         })
         
+        // 切换到新视频后自动播放
         setTimeout(() => {
           isTransitioning.value = false
+          playVideo()
         }, 500) // 动画过渡时间
       }
     }
@@ -605,8 +676,10 @@ export default {
           query: queryParams 
         })
         
+        // 切换到新视频后自动播放
         setTimeout(() => {
           isTransitioning.value = false
+          playVideo()
         }, 500) // 动画过渡时间
       }
     }
@@ -821,7 +894,11 @@ export default {
       formatTime,
       // 卡片计数相关状态
       currentVideoIndex,
-      totalVideos
+      totalVideos,
+      // 播放列表相关状态
+      playlistType,
+      // 边界检测状态
+      showRefreshPrompt
     }
   }
 }
@@ -1087,5 +1164,59 @@ export default {
   font-size: 1rem;
   font-weight: bold;
   margin-top: 4px;
+}
+
+/* 发现页面刷新提示样式 */
+.refresh-prompt {
+  position: absolute;
+  bottom: 100px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.refresh-content {
+  background: rgba(0, 0, 0, 0.8);
+  padding: 16px 24px;
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.refresh-text {
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.refresh-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 20px;
+  padding: 8px 16px;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.refresh-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.refresh-button:active {
+  transform: translateY(0);
 }
 </style>
