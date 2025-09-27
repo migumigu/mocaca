@@ -74,19 +74,19 @@ if [ "$BUILD_FRONTEND" = true ]; then
     echo "   - aidedaijiayang/mocaca-frontend:latest (ARM)"
 fi
 
-# 导出本地镜像到tar文件
-echo ""
-echo "导出本地镜像到tar文件..."
-docker save -o mocaca-backend-x86-${VERSION}.tar aidedaijiayang/mocaca-backend:latest
-docker save -o mocaca-backend-arm-${VERSION}.tar aidedaijiayang/mocaca-backend:latest
+# 导出本地镜像到tar文件（暂时注释掉）
+# echo ""
+# echo "导出本地镜像到tar文件..."
+# docker save -o mocaca-backend-x86-${VERSION}.tar aidedaijiayang/mocaca-backend:latest
+# docker save -o mocaca-backend-arm-${VERSION}.tar aidedaijiayang/mocaca-backend:latest
 
-if [ "$BUILD_FRONTEND" = true ]; then
-    docker save -o mocaca-frontend-x86-${VERSION}.tar aidedaijiayang/mocaca-frontend:latest
-    docker save -o mocaca-frontend-arm-${VERSION}.tar aidedaijiayang/mocaca-frontend:latest
-fi
+# if [ "$BUILD_FRONTEND" = true ]; then
+#     docker save -o mocaca-frontend-x86-${VERSION}.tar aidedaijiayang/mocaca-frontend:latest
+#     docker save -o mocaca-frontend-arm-${VERSION}.tar aidedaijiayang/mocaca-frontend:latest
+# fi
 
-echo "生成的tar文件:"
-ls -lh mocaca-*-${VERSION}.tar 2>/dev/null || echo "未生成tar文件"
+# echo "生成的tar文件:"
+# ls -lh mocaca-*-${VERSION}.tar 2>/dev/null || echo "未生成tar文件"
 
 # 查看镜像架构信息
 echo "镜像架构信息:"

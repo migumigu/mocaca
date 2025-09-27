@@ -25,8 +25,7 @@ echo "构建后端镜像..."
 docker buildx build --platform linux/amd64 \
   -t aidedaijiayang/mocaca-backend:${VERSION} \
   -t aidedaijiayang/mocaca-backend:latest \
-  --load . && \
-docker save -o ../mocaca-backend-${VERSION}.tar aidedaijiayang/mocaca-backend:latest) || exit 1
+  --load .) || exit 1
 
 # 构建前端镜像 (仅x86，如果存在)
 if [ "$BUILD_FRONTEND" = true ]; then
@@ -35,15 +34,14 @@ if [ "$BUILD_FRONTEND" = true ]; then
     docker buildx build --platform linux/amd64 \
       -t aidedaijiayang/mocaca-frontend:${VERSION} \
       -t aidedaijiayang/mocaca-frontend:latest \
-      --load . && \
-    docker save -o ../mocaca-frontend-${VERSION}.tar aidedaijiayang/mocaca-frontend:latest) || exit 1
+      --load .) || exit 1
 else
     echo "跳过前端镜像构建"
 fi
 
 echo "=== 镜像构建完成 ==="
-echo "生成的tar文件:"
-ls -lh mocaca-*-${VERSION}.tar 2>/dev/null || echo "未生成tar文件"
+# echo "生成的tar文件:"
+# ls -lh mocaca-*-${VERSION}.tar 2>/dev/null || echo "未生成tar文件"
 
 # 查看镜像架构信息
 echo "镜像架构信息:"

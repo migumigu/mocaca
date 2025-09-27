@@ -71,6 +71,52 @@ cd frontend && npm run dev
 cd backend && flask run
 ```
 
+### 🔧 环境变量配置
+
+前端支持通过环境变量配置后端API地址，配置优先级如下：
+
+1. **环境变量**（最高优先级）
+2. **.env文件配置**
+3. **默认值**（最低优先级）
+
+#### 配置方式
+
+**方法一：修改 .env 文件**（推荐）
+```bash
+# 编辑 frontend/.env 文件
+VITE_API_BASE_URL=http://your-server.com:5003
+VITE_DEV=true
+```
+
+**方法二：命令行设置**
+```bash
+# Linux/Mac
+export VITE_API_BASE_URL=http://your-server.com:5003
+npm run dev
+
+# Windows (CMD)
+set VITE_API_BASE_URL=http://your-server.com:5003
+npm run dev
+
+# Windows (PowerShell)
+$env:VITE_API_BASE_URL="http://your-server.com:5003"
+npm run dev
+```
+
+#### 配置示例
+```bash
+# 连接本地后端（默认）
+VITE_API_BASE_URL=http://localhost:5003
+
+# 连接局域网服务器
+VITE_API_BASE_URL=http://192.168.1.100:5003
+
+# 连接远程服务器
+VITE_API_BASE_URL=https://api.yourdomain.com
+```
+
+**注意**：修改配置后需要重启前端开发服务器才能生效。
+
 ### 🐳 Docker 部署
 
 #### 生产环境配置（使用DockerHub镜像）
