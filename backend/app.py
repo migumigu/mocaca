@@ -686,19 +686,30 @@ def admin_generate_thumbnails():
         return jsonify({'error': '权限不足'}), 403
     
     try:
-        # 获取所有没有缩略图的视频
-        videos_without_thumbnails = Video.query.filter(
-            (Video.thumbnail_path.is_(None)) | (Video.thumbnail_path == '')
-        ).all()
+        # 获取所有视频
+        all_videos = Video.query.all()
+        total_videos = len(all_videos)
         
-        total_videos = len(videos_without_thumbnails)
+        # 统计已有缩略图的视频
+        existing_thumbnails = 0
+        videos_without_thumbnails = []
+        
+        for video in all_videos:
+            if video.thumbnail_path and os.path.exists(video.thumbnail_path):
+                existing_thumbnails += 1
+            else:
+                videos_without_thumbnails.append(video)
+        
         generated_count = 0
         failed_videos = []
         
-        print(f"🎯 开始为 {total_videos} 个视频生成缩略图")
+        print(f"🎯 开始生成缩略图统计:")
+        print(f"   - 总视频数: {total_videos}")
+        print(f"   - 已有缩略图: {existing_thumbnails}")
+        print(f"   - 需要生成: {len(videos_without_thumbnails)}")
         
         for i, video in enumerate(videos_without_thumbnails):
-            print(f"🔄 处理第 {i+1}/{total_videos} 个视频: {video.filename}")
+            print(f"🔄 处理第 {i+1}/{len(videos_without_thumbnails)} 个视频: {video.filename}")
             
             video_path = os.path.join(app.config['MEDIA_FOLDER'], video.filename)
             if not os.path.exists(video_path):
@@ -724,8 +735,9 @@ def admin_generate_thumbnails():
         
         return jsonify({
             'status': 'success',
-            'message': f'缩略图生成完成，成功: {generated_count}，失败: {len(failed_videos)}',
+            'message': f'缩略图生成完成，总视频: {total_videos}，已有缩略图: {existing_thumbnails}，新增: {generated_count}，失败: {len(failed_videos)}',
             'total_videos': total_videos,
+            'existing_thumbnails': existing_thumbnails,
             'generated_count': generated_count,
             'failed_count': len(failed_videos),
             'failed_videos': failed_videos
@@ -753,14 +765,23 @@ def admin_refresh_files():
     try:
         # 获取媒体目录路径
         media_dir = app.config['MEDIA_FOLDER']
-        print(f"🎯 开始扫描媒体目录: {media_dir}")
+        print(f"🎯 开始智能扫描媒体目录: {media_dir}")
         print(f"📁 媒体目录是否存在: {os.path.exists(media_dir)}")
         
         if os.path.exists(media_dir):
             print(f"📂 媒体目录权限: {oct(os.stat(media_dir).st_mode)}")
         
+        # 获取当前数据库中的所有视频记录
+        existing_videos = Video.query.all()
+        existing_filepaths = {v.filepath: v for v in existing_videos}
+        existing_filenames = {v.filename: v for v in existing_videos}
+        
+        print(f"🗃️ 当前数据库中的视频记录数: {len(existing_videos)}")
+        
+        # 扫描文件系统中的视频文件
         video_files = []
         scanned_dirs = []
+        file_system_files = set()
         
         # 递归扫描所有子目录
         for root, dirs, files in os.walk(media_dir):
@@ -782,41 +803,79 @@ def admin_refresh_files():
                     video_files.append({
                         'filename': file,
                         'filepath': relative_path,
-                        'directory': root.replace(media_dir, '').lstrip('/')
+                        'full_path': file_path
                     })
+                    file_system_files.add(relative_path)
         
         print(f"📊 扫描完成统计:")
         print(f"   - 扫描目录总数: {len(scanned_dirs)}")
         print(f"   - 找到视频文件数: {len(video_files)}")
-        print(f"   - 扫描的目录列表: {scanned_dirs}")
         
-        # 更新数据库
-        current_count = Video.query.count()
-        print(f"🗃️ 当前数据库中的视频记录数: {current_count}")
+        # 智能更新数据库
+        added_count = 0
+        removed_count = 0
+        unchanged_count = 0
         
-        Video.query.delete()  # 清空现有数据
-        print("🗑️ 已清空数据库中的视频记录")
+        # 修复路径匹配：将数据库中的完整路径转换为相对路径进行比较
+        existing_relative_paths = {}
+        for filepath, video in existing_filepaths.items():
+            try:
+                relative_path = os.path.relpath(filepath, media_dir)
+                existing_relative_paths[relative_path] = video
+            except ValueError:
+                # 如果路径转换失败，可能是跨磁盘路径，直接使用文件名
+                existing_relative_paths[video.filename] = video
         
+        # 1. 删除数据库中不存在对应文件的记录
+        for relative_path, video in existing_relative_paths.items():
+            if relative_path not in file_system_files:
+                print(f"🗑️ 删除数据库中不存在的文件记录: {relative_path}")
+                db.session.delete(video)
+                removed_count += 1
+        
+        # 2. 添加新增的文件到数据库
         for video_data in video_files:
-            video = Video(
-                filename=video_data['filepath'],  # 使用相对路径作为文件名
-                filepath=os.path.join(media_dir, video_data['filepath'])  # 完整路径
-            )
-            db.session.add(video)
-            print(f"💾 添加视频到数据库: {video_data['filepath']}")
+            if video_data['filepath'] not in existing_relative_paths:
+                # 检查是否为纵向视频
+                if is_portrait_video(video_data['full_path']):
+                    video = Video(
+                        filename=video_data['filepath'],
+                        filepath=video_data['full_path']
+                    )
+                    db.session.add(video)
+                    print(f"💾 添加新增视频到数据库: {video_data['filepath']}")
+                    added_count += 1
+                else:
+                    print(f"⏭️ 跳过横向视频: {video_data['filepath']}")
+            else:
+                unchanged_count += 1
         
         db.session.commit()
-        print("✅ 数据库提交成功")
+        print("✅ 智能更新数据库完成")
+        print(f"📈 更新统计:")
+        print(f"   - 新增视频: {added_count}")
+        print(f"   - 删除记录: {removed_count}")
+        print(f"   - 保持不变: {unchanged_count}")
+        print(f"   - 最终总数: {Video.query.count()}")
         
         return jsonify({
-            'message': f'成功更新文件列表，共找到 {len(video_files)} 个视频文件',
-            'file_count': len(video_files),
-            'scanned_directories': len(scanned_dirs),
+            'message': f'智能更新文件列表完成',
+            'statistics': {
+                'total_files_found': len(video_files),
+                'videos_added': added_count,
+                'records_removed': removed_count,
+                'videos_unchanged': unchanged_count,
+                'final_total': Video.query.count()
+            },
             'details': {
                 'media_directory': media_dir,
-                'scanned_dirs': scanned_dirs,
-                'video_files': [v['filepath'] for v in video_files]
-            }
+                'scanned_directories': len(scanned_dirs),
+                'file_operations': {
+                    'added': [v['filepath'] for v in video_files if v['filepath'] not in existing_filenames],
+                    'removed': [filepath for filepath in existing_filepaths.keys() if filepath not in file_system_files]
+                }
+            },
+            'summary': f'更新完成：扫描到{len(video_files)}个视频文件，新增{added_count}个文件，清理{removed_count}个不存在文件数据，最新总文件数：{Video.query.count()}'
         })
         
     except Exception as e:

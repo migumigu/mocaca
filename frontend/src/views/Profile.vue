@@ -453,7 +453,8 @@ export default {
         
         if (res.ok) {
           const data = await res.json()
-          refreshMessage.value = data.message || '文件列表更新成功'
+          // 优先显示summary中的详细统计信息，如果没有则显示message
+          refreshMessage.value = data.summary || data.message || '文件列表更新成功'
         } else {
           const errorData = await res.json()
           refreshMessage.value = errorData.error || '更新失败'
