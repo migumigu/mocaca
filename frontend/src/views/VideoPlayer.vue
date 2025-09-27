@@ -76,6 +76,27 @@
             </div>
           </div>
         </div>
+
+
+
+
+
+        <!-- 快进进度条 -->
+        <div v-if="showSeekBar" class="seek-bar-overlay">
+          <div class="seek-bar-container">
+            <div class="seek-bar">
+              <div class="seek-progress" :style="{ width: seekProgress + '%' }"></div>
+            </div>
+            <div class="seek-time">
+              <span>{{ formatTime(seekCurrentTime) }}</span>
+              <span class="seek-duration">{{ formatTime(videoDuration) }}</span>
+            </div>
+            <div class="seek-amount">
+              <span v-if="seekAmount > 0">+{{ seekAmount }}秒</span>
+              <span v-else-if="seekAmount < 0">{{ seekAmount }}秒</span>
+            </div>
+          </div>
+        </div>
       </div>
     </transition>
     
@@ -120,11 +141,22 @@ export default {
     const touchEndY = ref(0)
     const touchStartX = ref(0)
     const touchEndX = ref(0)
+    const touchCurrentX = ref(0)
     const swipeThreshold = 100 // 滑动阈值，超过这个值才触发切换
+    
+    // 长按2倍速相关状态
     const longPressTimer = ref(null)
     const isLongPressing = ref(false)
     const originalPlaybackRate = ref(1)
-    const isHorizontalSwipe = ref(false)
+    
+    // 进度条快进相关状态
+    const showSeekBar = ref(false)
+    const seekStartTime = ref(0)
+    const seekCurrentTime = ref(0)
+    const seekAmount = ref(0)
+    const seekProgress = ref(0)
+    const videoDuration = ref(0)
+    const isSeeking = ref(false)
 
     // 播放列表类型和种子
     const playlistType = ref(route.query.playlistType || 'latest')
@@ -380,44 +412,96 @@ export default {
     const handleTouchStart = (event) => {
       touchStartY.value = event.touches[0].clientY
       touchStartX.value = event.touches[0].clientX
+      touchCurrentX.value = touchStartX.value
       
       // 开始长按计时器（2倍速播放）
       longPressTimer.value = setTimeout(() => {
-        if (videoRef.value) {
+        if (videoRef.value && !isLongPressing.value) {
           isLongPressing.value = true
           originalPlaybackRate.value = videoRef.value.playbackRate
           videoRef.value.playbackRate = 2.0 // 2倍速播放
         }
       }, 500) // 长按500ms触发
+      
+      // 初始化进度条快进状态
+      if (videoRef.value) {
+        seekStartTime.value = videoRef.value.currentTime
+        seekCurrentTime.value = seekStartTime.value
+        videoDuration.value = videoRef.value.duration || 0
+        isSeeking.value = false
+      }
     }
 
     // 处理触摸移动事件
     const handleTouchMove = (event) => {
-      // 暂时移除水平滑动功能，只处理垂直滑动
+      if (!event.touches.length) return
+      
+      touchCurrentX.value = event.touches[0].clientX
+      const deltaX = touchCurrentX.value - touchStartX.value
+      
+      // 水平滑动超过阈值，开始进度条快进
+      if (Math.abs(deltaX) > 20 && videoRef.value) {
+        // 取消长按计时器
+        if (longPressTimer.value) {
+          clearTimeout(longPressTimer.value)
+          longPressTimer.value = null
+        }
+        
+        // 停止长按2倍速
+        if (isLongPressing.value) {
+          isLongPressing.value = false
+          videoRef.value.playbackRate = originalPlaybackRate.value
+        }
+        
+        // 开始进度条快进
+        if (!isSeeking.value) {
+          isSeeking.value = true
+          showSeekBar.value = true
+        }
+        
+        // 计算快进量（每10像素对应1秒）
+        const seekSeconds = Math.round(deltaX / 10)
+        seekAmount.value = seekSeconds
+        seekCurrentTime.value = Math.max(0, Math.min(videoDuration.value, seekStartTime.value + seekSeconds))
+        seekProgress.value = (seekCurrentTime.value / videoDuration.value) * 100
+      }
     }
 
     // 处理触摸结束事件
     const handleTouchEnd = (event) => {
-      touchEndY.value = event.changedTouches[0].clientY
-      touchEndX.value = event.changedTouches[0].clientX
-      
-      // 清除长按计时器
+      // 取消长按计时器
       if (longPressTimer.value) {
         clearTimeout(longPressTimer.value)
         longPressTimer.value = null
       }
       
-      // 恢复播放速度（如果正在长按加速）
-      if (isLongPressing.value && videoRef.value) {
-        videoRef.value.playbackRate = originalPlaybackRate.value
+      // 恢复长按2倍速
+      if (isLongPressing.value) {
         isLongPressing.value = false
+        if (videoRef.value) {
+          videoRef.value.playbackRate = originalPlaybackRate.value
+        }
+      }
+      
+      // 处理进度条快进
+      if (isSeeking.value && videoRef.value) {
+        // 应用快进
+        videoRef.value.currentTime = seekCurrentTime.value
+        showSeekBar.value = false
+        isSeeking.value = false
+        
+        // 如果视频暂停，播放视频
+        if (videoRef.value.paused) {
+          playVideo()
+        }
       }
       
       // 处理垂直滑动切换视频
+      touchEndY.value = event.changedTouches[0].clientY
       const swipeDistance = touchEndY.value - touchStartY.value
       
-      // 判断滑动方向和距离
-      if (Math.abs(swipeDistance) > swipeThreshold) {
+      // 判断滑动方向和距离（只在没有进行进度条快进时）
+      if (!isSeeking.value && Math.abs(swipeDistance) > swipeThreshold) {
         if (swipeDistance > 0) {
           // 向下滑动，加载前一个视频
           loadPrevVideo()
@@ -495,6 +579,14 @@ export default {
       const baseName = filename.split('/').pop().split('\\').pop()
       // 再去掉文件扩展名
       return baseName.replace(/\.[^/.]+$/, "")
+    }
+
+    // 格式化时间显示（秒 → 分:秒）
+    const formatTime = (seconds) => {
+      if (!seconds || isNaN(seconds)) return '00:00'
+      const mins = Math.floor(seconds / 60)
+      const secs = Math.floor(seconds % 60)
+      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
     }
 
     // 收藏功能相关状态
@@ -671,6 +763,7 @@ export default {
       togglePlay,
       goBack,
       handleTouchStart,
+      handleTouchMove,
       handleTouchEnd,
       setupVideoEventListeners,
       removeFileExtension,
@@ -679,7 +772,14 @@ export default {
       toggleFavorite,
       isDisliked,
       dislikeCount,
-      toggleDislike
+      toggleDislike,
+      // 新添加的状态和函数
+      showSeekBar,
+      seekCurrentTime,
+      seekAmount,
+      seekProgress,
+      videoDuration,
+      formatTime
     }
   }
 }
@@ -924,5 +1024,65 @@ export default {
     opacity: 0.3;
     transform: scale(0.8);
   }
+}
+
+
+
+
+
+/* 进度条快进样式 */
+.seek-bar-overlay {
+  position: absolute;
+  bottom: 100px;
+  left: 0;
+  right: 0;
+  z-index: 25;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 16px;
+}
+
+.seek-bar-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.seek-bar {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.seek-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: #ff6b81;
+  border-radius: 2px;
+  transition: width 0.1s ease;
+}
+
+.seek-time {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  color: white;
+  font-size: 0.9rem;
+}
+
+.seek-duration {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.seek-amount {
+  color: #ff6b81;
+  font-size: 1rem;
+  font-weight: bold;
+  margin-top: 4px;
 }
 </style>
