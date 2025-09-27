@@ -347,6 +347,8 @@ export default {
           }
         }
         
+        console.log(`发现页面API请求: ${apiUrl}`)
+        
         const res = await fetch(apiUrl, {
           headers: {
             'Content-Type': 'application/json'
@@ -355,6 +357,9 @@ export default {
         if (!res.ok) throw new Error(`HTTP错误! 状态码: ${res.status}`)
         
         const data = await res.json()
+        console.log(`发现页面API响应:`, data)
+        console.log(`当前已加载视频数量: ${videos.value.length}, 新加载视频数量: ${data.items ? data.items.length : 0}`)
+        
         if (!data.items) {
           hasMore.value = false
         } else {
@@ -407,10 +412,20 @@ export default {
     }
 
     const openPlayer = (video) => {
+      console.log('=== 从发现页面打开播放器 ===')
+      console.log('点击的视频信息:', video)
+      console.log('当前随机种子:', randomSeed.value)
+      console.log('当前播放列表类型:', activeTab.value)
+      console.log('当前视频列表长度:', videos.value.length)
+      console.log('当前视频列表前10个视频ID:', videos.value.slice(0, 10).map(v => v.id))
+      
       // 保存当前点击的卡片在数组中的实际索引
       const cardIndex = videos.value.findIndex(v => v.id === video.id)
+      console.log('当前视频在列表中的索引:', cardIndex)
+      
       if (cardIndex !== -1) {
         sessionStorage.setItem('videoListCardIndex', cardIndex.toString())
+        console.log('已保存索引到sessionStorage:', cardIndex)
       }
       
       router.push({

@@ -271,8 +271,13 @@ export default {
       try {
         const baseUrl = getBaseUrl()
         
+        console.log('=== 开始加载播放列表导航 ===')
+        console.log('当前播放列表类型:', playlistType.value)
+        console.log('当前种子参数:', playlistSeed.value)
+        console.log('当前视频ID:', currentId)
+        
         if (playlistType.value === 'random') {
-          // 发现页面（随机列表）：固定加载200个视频
+          // 发现页面（随机列表）：固定加载200个视频，使用与发现页面相同的参数
           let apiUrl = `${baseUrl}/videos?page=1&per_page=200&random=true`
           
           // 如果有种子参数，使用相同的种子保持随机顺序一致
@@ -285,13 +290,27 @@ export default {
             apiUrl += `&seed=${newSeed}`
           }
           
+          // 添加用户ID过滤，与发现页面保持一致
+          const savedUser = localStorage.getItem('currentUser')
+          if (savedUser) {
+            const user = JSON.parse(savedUser)
+            apiUrl += `&user_id=${user.id}&exclude_disliked=true`
+          }
+          
+          console.log('随机列表API URL:', apiUrl)
+          
           const res = await fetch(apiUrl)
           if (res.ok) {
             const data = await res.json()
+            console.log('随机列表API响应数据:', data)
+            
             if (data.items && data.items.length > 0) {
               playlistVideos.value = data.items
               const videoIds = data.items.map(v => v.id)
               const currentIndex = videoIds.indexOf(parseInt(currentId))
+              
+              console.log('视频ID列表长度:', videoIds.length)
+              console.log('当前视频在列表中的索引:', currentIndex)
               
               if (currentIndex !== -1) {
                 // 设置卡片计数（固定为200个视频）
@@ -311,8 +330,21 @@ export default {
                 } else {
                   prevVideoId.value = null
                 }
+                
+                console.log('导航数据设置完成:')
+                console.log('当前索引:', currentVideoIndex.value)
+                console.log('总视频数:', totalVideos.value)
+                console.log('下一个视频ID:', nextVideoId.value)
+                console.log('上一个视频ID:', prevVideoId.value)
+                console.log('是否在边界:', currentIndex === 0 || currentIndex === videoIds.length - 1)
+              } else {
+                console.error('当前视频ID不在随机列表中:', currentId)
               }
+            } else {
+              console.error('随机列表为空或items字段不存在')
             }
+          } else {
+            console.error('随机列表API请求失败:', res.status)
           }
         } else {
           // 最新页面：使用后端导航API
@@ -387,8 +419,17 @@ export default {
     })
 
     onMounted(async () => {
+      console.log('=== VideoPlayer 组件挂载 ===')
+      console.log('路由参数:', route.params)
+      console.log('路由查询参数:', route.query)
+      console.log('当前视频ID:', route.params.id)
+      console.log('播放列表类型:', playlistType.value)
+      console.log('随机种子:', playlistSeed.value)
+      
       await fetchVideoInfo(route.params.id)
       playVideo()
+      // 加载播放列表导航数据
+      await loadPlaylistNavigation(route.params.id)
       // 设置视频事件监听器
       setTimeout(() => {
         setupVideoEventListeners()
@@ -599,6 +640,11 @@ export default {
 
     // 加载下一个视频
     const loadNextVideo = () => {
+      console.log('=== 尝试加载下一个视频 ===')
+      console.log('下一个视频ID:', nextVideoId.value)
+      console.log('是否正在过渡:', isTransitioning.value)
+      console.log('当前播放列表类型:', playlistType.value)
+      
       if (nextVideoId.value && !isTransitioning.value) {
         isTransitioning.value = true
         // 设置滑动方向 - 向上滑动加载下一个（新视频从上方进入）
