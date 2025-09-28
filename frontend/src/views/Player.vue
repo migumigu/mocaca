@@ -9,6 +9,7 @@
       x5-playsinline
       :src="videoUrl"
       class="fullscreen-video"
+      x-webkit-airplay="allow"
     ></video>
   </div>
 </template>
