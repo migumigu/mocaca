@@ -65,13 +65,65 @@ export default {
         document.msExitFullscreen()
       }
     },
+    // 增强全屏状态检测
     handleFullscreenChange() {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
       this.isFullscreen = !!(
         document.fullscreenElement ||
         document.webkitFullscreenElement ||
         document.mozFullScreenElement ||
-        document.msFullscreenElement
-      )
+        (isIOS && window.navigator.standalone)
+      );
+    },
+
+    // 增强进入全屏方法
+    enterFullscreen() {
+      const element = document.documentElement;
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+      if (isIOS) {
+        // iOS专用处理
+        if (element.webkitRequestFullscreen) {
+          element.webkitRequestFullscreen();
+        }
+        // iOS备用方案：使用video元素全屏
+        else if (this.$refs.videoPlayer?.webkitEnterFullscreen) {
+          this.$refs.videoPlayer.webkitEnterFullscreen();
+        }
+      }
+      else {
+        // 原有标准处理
+        if (element.requestFullscreen) {
+          element.requestFullscreen().catch(err => {
+            console.error('全屏错误:', err);
+          });
+        } else if (element.webkitRequestFullscreen) {
+          element.webkitRequestFullscreen();
+        }
+      }
+    },
+
+    // 增强退出全屏方法
+    exitFullscreen() {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+      if (isIOS) {
+        if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        }
+        // 处理PWA standalone模式
+        else if (window.navigator.standalone) {
+          // 无法真正退出，只能隐藏状态栏
+          window.scrollTo(0, 1);
+        }
+      }
+      else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        }
+      }
     }
   }
 }
@@ -135,5 +187,34 @@ body {
 .action-icon.active:hover {
   background: #357abd;
   transform: scale(1.05);
+}
+
+/* iOS全屏特定样式 */
+@supports (-webkit-touch-callout: none) {
+  :fullscreen, :-webkit-full-screen {
+    background: #000;
+  }
+
+  /* 安全区域适配 */
+  @supports (padding-top: env(safe-area-inset-top)) {
+    .app-container {
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .fullscreen-button {
+      top: calc(16px + env(safe-area-inset-top));
+    }
+  }
+
+  /* 强制全屏视频样式 */
+  .fullscreen-video {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain;
+  }
 }
 </style>
