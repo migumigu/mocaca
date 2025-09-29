@@ -277,9 +277,8 @@ export default {
     const thumbnailMessage = ref('')
 
     const getBaseUrl = () => {
-      return import.meta.env.DEV 
-        ? '/api' 
-        : `${window.location.protocol}//${window.location.hostname}:5003/api`
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5003';
+      return `${baseUrl}/api`
     }
 
     const handleLogin = async () => {
@@ -325,7 +324,21 @@ export default {
         const baseUrl = getBaseUrl()
         const res = await fetch(`${baseUrl}/dislikes?user_id=${currentUser.value.id}`)
         if (res.ok) {
-          dislikes.value = await res.json()
+          const data = await res.json()
+          
+          // 处理缩略图URL，将相对路径转换为完整URL
+          const processThumbnailUrl = (video) => {
+            if (video.thumbnail_url && video.thumbnail_url.startsWith('/')) {
+              const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5003';
+              return `${baseUrl}${video.thumbnail_url}`
+            }
+            return video.thumbnail_url
+          }
+          
+          dislikes.value = Array.isArray(data) ? data.map(item => ({
+            ...item,
+            thumbnail_url: processThumbnailUrl(item)
+          })) : data
         }
       } catch (error) {
         console.error('获取讨厌列表失败:', error)

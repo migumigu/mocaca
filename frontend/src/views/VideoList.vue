@@ -88,6 +88,12 @@ export default {
     const currentPlaylistType = ref('latest') // 当前播放列表类型
     const randomSeed = ref(Date.now()) // 随机种子，确保随机列表一致性
     
+    // 获取基础URL（包含/api路径）
+    const getBaseUrl = () => {
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5003'
+      return `${baseUrl}/api`
+    }
+    
     // 缓存相关状态
     const cacheKey = ref('')
     const cachedData = ref(null)
@@ -190,8 +196,9 @@ export default {
       // 尝试从缓存恢复数据
       const hasCache = restoreCacheData()
       
-      if (!hasCache) {
-        // 如果没有缓存，需要加载数据
+      // 即使有缓存，如果视频列表为空，也需要加载数据
+      if (!hasCache || videos.value.length === 0) {
+        // 需要加载数据
         const targetCardIndex = route.query.cardIndex ? parseInt(route.query.cardIndex) : -1
         
         // 计算需要加载的页数来包含目标卡片索引
@@ -272,37 +279,70 @@ export default {
     })
 
     const preGenerateThumbnails = async (startIndex = 0, count = 5) => {
+      console.log(`=== 预生成缩略图开始 ===`)
+      console.log(`起始索引: ${startIndex}, 数量: ${count}, 总视频数: ${videos.value.length}`)
+      
       // 为指定范围的视频预生成缩略图
       const endIndex = Math.min(startIndex + count, videos.value.length)
       const videosToPreGenerate = videos.value.slice(startIndex, endIndex)
+      console.log(`预生成缩略图视频范围: ${startIndex} 到 ${endIndex}, 共${videosToPreGenerate.length}个视频`)
       
       for (const video of videosToPreGenerate) {
+        console.log(`处理视频ID: ${video.id}, 文件名: ${video.filename}, 当前缩略图URL: ${video.thumbnail_url}`)
+        
         if (!video.thumbnail_url) {
           try {
-            const baseUrl = import.meta.env.DEV 
-              ? '/api' 
-              : `${window.location.protocol}//${window.location.hostname}:5003/api`;
+            const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5003';
+            const apiUrl = `${baseUrl}/api/thumbnail/${video.id}`
+            console.log(`预生成缩略图API调用: ${apiUrl}`)
             
-            await fetch(`${baseUrl}/thumbnail/${video.id}`)
-            console.log(`预生成缩略图: ${video.id}`)
-            // 更新该视频的缩略图URL，触发重新渲染
-            const videoIndex = videos.value.findIndex(v => v.id === video.id)
-            if (videoIndex !== -1) {
-              videos.value[videoIndex].thumbnail_url = `/api/thumbnail/${video.id}`
-              // 强制更新视图
-              videos.value = [...videos.value]
+            const response = await fetch(apiUrl, {
+              method: 'GET'
+            })
+            console.log(`预生成缩略图API响应状态: ${response.status}`)
+            
+            if (response.ok) {
+              console.log(`预生成缩略图成功: ${video.id}`)
+              // 更新该视频的缩略图URL，触发重新渲染
+              const targetVideoIndex = videos.value.findIndex(v => v.id === video.id)
+              console.log(`视频在列表中的索引: ${targetVideoIndex}`)
+              
+              if (targetVideoIndex !== -1) {
+                // 使用后端返回的缩略图路径格式：只包含视频ID和文件名，不包含路径
+                const thumbnailBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5003';
+                // 从完整路径中提取文件名（需要先解码URL编码的路径）
+                const decodedFilename = decodeURIComponent(video.filename);
+                const filename = decodedFilename.split('/').pop().split('\\').pop();
+                const newThumbnailUrl = `${thumbnailBaseUrl}/thumbnails/${video.id}_${filename}.jpg`
+                console.log(`解码后的文件名: ${decodedFilename}, 提取的文件名: ${filename}`)
+                console.log(`新缩略图URL: ${newThumbnailUrl}`)
+                
+                videos.value[targetVideoIndex].thumbnail_url = newThumbnailUrl
+                // 强制更新视图
+                videos.value = [...videos.value]
+                console.log(`预生成缩略图URL更新完成`)
+              }
+            } else {
+              console.warn(`预生成缩略图API调用失败: ${video.id}, 状态码: ${response.status}`)
             }
           } catch (error) {
             console.error(`预生成缩略图失败: ${video.id}`, error)
           }
+        } else {
+          console.log(`视频${video.id}已有缩略图，跳过预生成`)
         }
       }
       
+      console.log(`预生成缩略图批次完成`)
+      
       // 如果还有更多视频，继续预生成
       if (endIndex < videos.value.length) {
+        console.log(`还有更多视频需要预生成，继续下一批`)
         setTimeout(() => {
           preGenerateThumbnails(endIndex, count)
         }, 1000) // 1秒后继续生成下一批
+      } else {
+        console.log(`所有视频缩略图预生成完成`)
       }
     }
     
@@ -319,10 +359,8 @@ export default {
       
       loading.value = true
       try {
-        // 根据环境动态获取API基础URL
-        const baseUrl = import.meta.env.DEV 
-          ? '/api' 
-          : `${window.location.protocol}//${window.location.hostname}:5003/api`;
+        // 使用getBaseUrl接口获取API基础URL
+        const baseUrl = getBaseUrl()
         
         // 获取当前用户ID，用于过滤讨厌的视频
         const savedUser = localStorage.getItem('currentUser')
@@ -364,7 +402,16 @@ export default {
           hasMore.value = false
         } else {
           const oldLength = videos.value.length
-          videos.value = [...videos.value, ...data.items]
+          // 处理缩略图URL：将相对路径转换为绝对URL
+          const processedItems = data.items.map(item => {
+            if (item.thumbnail_url && item.thumbnail_url.startsWith('/')) {
+              // 生产环境：使用环境变量中的API基础URL
+              const thumbnailBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5003';
+              item.thumbnail_url = `${thumbnailBaseUrl}${item.thumbnail_url}`
+            }
+            return item
+          })
+          videos.value = [...videos.value, ...processedItems]
           hasMore.value = data.has_next
           page.value += 1
           
@@ -382,7 +429,7 @@ export default {
           // 缩略图现在由后端提供，无需前端处理视频加载
           
           // 为新加载的视频预生成缩略图
-          if (oldLength > 0) {
+          if (oldLength >= 0) {
             preGenerateThumbnails(oldLength, 5)
           }
         }
@@ -443,27 +490,47 @@ export default {
     }
 
     const handleThumbnailError = async (videoId) => {
-      console.log(`缩略图加载失败，尝试生成: ${videoId}`)
+      console.log(`=== 缩略图加载失败，尝试生成缩略图 ===`)
+      console.log(`视频ID: ${videoId}`)
       
       // 触发后端生成缩略图
       try {
-        const baseUrl = import.meta.env.DEV 
-          ? '/api' 
-          : `${window.location.protocol}//${window.location.hostname}:5003/api`;
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || `${window.location.protocol}//${window.location.hostname}:5003`;
+        const apiUrl = `${baseUrl}/api/thumbnail/${videoId}`
+        console.log(`缩略图生成API URL: ${apiUrl}`)
         
-        // 调用缩略图生成API
-        const response = await fetch(`${baseUrl}/thumbnail/${videoId}`)
+        // 调用缩略图生成API（使用GET方法）
+        const response = await fetch(apiUrl, {
+          method: 'GET'
+        })
+        console.log(`缩略图生成API响应状态: ${response.status}`)
+        
         if (response.ok) {
           console.log(`缩略图生成成功: ${videoId}`)
           // 更新该视频的缩略图URL，触发重新渲染
           const videoIndex = videos.value.findIndex(v => v.id === videoId)
+          console.log(`视频在列表中的索引: ${videoIndex}`)
+          
           if (videoIndex !== -1) {
-            videos.value[videoIndex].thumbnail_url = `/api/thumbnail/${videoId}`
+            // 使用后端返回的缩略图路径格式：只包含视频ID和文件名，不包含路径
+            const thumbnailBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5003';
+            const targetVideo = videos.value[videoIndex];
+            // 从完整路径中提取文件名（需要先解码URL编码的路径）
+            const decodedFilename = decodeURIComponent(targetVideo.filename);
+            const filename = decodedFilename.split('/').pop().split('\\').pop();
+            const newThumbnailUrl = `${thumbnailBaseUrl}/thumbnails/${videoId}_${filename}.jpg`
+            console.log(`解码后的文件名: ${decodedFilename}, 提取的文件名: ${filename}`)
+            console.log(`新缩略图URL: ${newThumbnailUrl}`)
+            
+            videos.value[videoIndex].thumbnail_url = newThumbnailUrl
             // 强制更新视图
             videos.value = [...videos.value]
+            console.log(`缩略图URL更新完成，强制视图更新`)
+          } else {
+            console.warn(`未找到视频ID为${videoId}的视频`)
           }
         } else {
-          console.error(`缩略图生成失败: ${videoId}`, response.status)
+          console.error(`缩略图生成失败: ${videoId}`, response.status, response.statusText)
         }
       } catch (error) {
         console.error(`触发缩略图生成失败: ${videoId}`, error)

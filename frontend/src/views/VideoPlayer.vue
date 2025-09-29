@@ -235,7 +235,7 @@ export default {
         const data = await res.json()
         currentVideo.value = {
           ...data,
-          url: `${baseUrl}/videos/file/${encodeURIComponent(data.filename)}`
+          url: `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5003'}/api/videos/file/${encodeURIComponent(data.filename)}`
         }
         
         // 如果在收藏页面，使用后端导航API获取上下视频
@@ -757,9 +757,8 @@ export default {
     const dislikeCount = ref(0)
 
     const getBaseUrl = () => {
-      return import.meta.env.DEV 
-        ? '/api' 
-        : `${window.location.protocol}//${window.location.hostname}:5003/api`
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5003'
+      return `${baseUrl}/api`
     }
 
     // 检查收藏状态

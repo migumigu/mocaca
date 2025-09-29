@@ -104,9 +104,8 @@ export default {
     const totalPages = ref(1)
 
     const getBaseUrl = () => {
-      return import.meta.env.DEV 
-        ? '/api' 
-        : `${window.location.protocol}//${window.location.hostname}:5003/api`
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5003';
+      return `${baseUrl}/api`
     }
 
     const loadFavorites = async (page = 1, append = false) => {
@@ -119,12 +118,26 @@ export default {
         if (res.ok) {
           const data = await res.json()
           
+          // 处理缩略图URL，将相对路径转换为完整URL
+          const processThumbnailUrl = (video) => {
+            if (video.thumbnail_url && video.thumbnail_url.startsWith('/')) {
+              const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5003';
+              return `${baseUrl}${video.thumbnail_url}`
+            }
+            return video.thumbnail_url
+          }
+          
+          const processedItems = (data.items || []).map(item => ({
+            ...item,
+            thumbnail_url: processThumbnailUrl(item)
+          }))
+          
           if (append) {
             // 追加模式：将新数据添加到现有列表
-            favorites.value = [...favorites.value, ...(data.items || [])]
+            favorites.value = [...favorites.value, ...processedItems]
           } else {
             // 首次加载：替换整个列表
-            favorites.value = data.items || []
+            favorites.value = processedItems
           }
           
           currentPage.value = data.page
