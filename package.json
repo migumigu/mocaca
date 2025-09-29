@@ -1,0 +1,17 @@
+{
+  "name": "mocaca",
+  "version": "0.0.3",
+  "description": "Mocaca video management system",
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "preview": "cd frontend && npm run preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-username/mocaca.git"
+  },
+  "keywords": ["video", "management", "vue", "backend"],
+  "author": "Your Name",
+  "license": "MIT"
+}
