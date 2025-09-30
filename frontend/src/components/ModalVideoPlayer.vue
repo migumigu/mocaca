@@ -7,64 +7,77 @@
       @touchmove="handleTouchMove"
       @touchend="handleTouchEnd"
     >
+      <!-- 返回按钮 -->
+      <div class="back-button" @click="close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5"></path>
+          <path d="M12 19l-7-7 7-7"></path>
+        </svg>
+      </div>
+      
       <!-- 视频播放区域 -->
-      <div class="video-wrapper">
-        <video 
-          ref="videoRef"
-          :src="currentVideo.url"
-          class="video-element"
-          playsinline
-          webkit-playsinline
-          x5-playsinline
-          autoplay
-          @click="togglePlay"
-          @loadstart="isLoading = true"
-          @canplay="isLoading = false"
-          @ended="handleVideoEnded"
-        ></video>
-        
-        <!-- 视频信息 -->
-        <div class="video-info">
-          <div class="video-title">{{ currentVideo.filename ? removeFileExtension(currentVideo.filename) : '' }}</div>
-          <div class="video-counter" v-if="currentVideoIndex !== -1 && totalVideos > 0">
-            {{ currentVideoIndex + 1 }} / {{ totalVideos }}
+      <transition name="slide">
+        <div 
+          v-if="!isTransitioning" 
+          class="video-wrapper"
+          :key="currentVideo.id"
+        >
+          <video 
+            ref="videoRef"
+            :src="currentVideo.url"
+            class="video-element"
+            playsinline
+            webkit-playsinline
+            x5-playsinline
+            autoplay
+            @click="togglePlay"
+            @loadstart="isLoading = true"
+            @canplay="isLoading = false"
+            @ended="handleVideoEnded"
+          ></video>
+          
+          <!-- 视频信息 -->
+          <div class="video-info">
+            <div class="video-title">{{ currentVideo.filename ? removeFileExtension(currentVideo.filename) : '' }}</div>
+            <div class="video-counter" v-if="currentVideoIndex !== -1 && totalVideos > 0">
+              {{ currentVideoIndex + 1 }} / {{ totalVideos }}
+            </div>
           </div>
-        </div>
-        
-        <!-- 加载指示器 -->
-        <div v-if="isLoading" class="loading-indicator">
-          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <path d="M12 6v6l4 2"></path>
-          </svg>
-        </div>
-        
-        <!-- 播放按钮 -->
-        <div v-if="!isPlaying && !isLoading" class="play-button" @click.stop="playVideo">
-          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="white">
-            <path d="M8 5v14l11-7z"/>
-          </svg>
-        </div>
-        
-        <!-- 关闭按钮 -->
-        <div class="close-button" @click="close">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 6L6 18"></path>
-            <path d="M6 6l12 12"></path>
-          </svg>
-        </div>
-        
-        <!-- 右侧操作栏 -->
-        <div class="right-action-bar">
-          <!-- 收藏按钮 -->
-          <div class="action-button" @click.stop="toggleFavorite">
-            <div class="action-icon">
-              <svg v-if="isFavorited" class="favorite-icon filled" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-              </svg>
-              <svg v-else class="favorite-icon outline" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-              </svg>
+          
+          <!-- 加载指示器 -->
+          <div v-if="isLoading" class="loading-indicator">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M12 6v6l4 2"></path>
+            </svg>
+          </div>
+          
+          <!-- 播放按钮 -->
+          <div v-if="!isPlaying && !isLoading" class="play-button" @click.stop="playVideo">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="white">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+          </div>
+          
+          <!-- 关闭按钮 -->
+          <div class="close-button" @click="close">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 6L6 18"></path>
+              <path d="M6 6l12 12"></path>
+            </svg>
+          </div>
+          
+          <!-- 右侧操作栏 -->
+          <div class="right-action-bar">
+            <!-- 收藏按钮 -->
+            <div class="action-button" @click.stop="toggleFavorite">
+              <div class="action-icon">
+                <svg v-if="isFavorited" class="favorite-icon filled" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                </svg>
+                <svg v-else class="favorite-icon outline" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                </svg>
             </div>
           </div>
           
@@ -87,20 +100,38 @@
           </div>
         </div>
         
-        <!-- 发现页面刷新提示 -->
-        <div v-if="playlistType === 'random' && showRefreshPrompt" class="refresh-prompt">
-          <div class="refresh-content">
-            <div class="refresh-text">已到达当前随机列表末尾</div>
-            <button class="refresh-button" @click.stop="generateNewRandomList">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M23 4v6h-6"></path>
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-              </svg>
-              生成新随机列表
-            </button>
+          <!-- 快进进度条 -->
+          <div v-if="showSeekBar" class="seek-bar-overlay">
+            <div class="seek-bar-container">
+              <div class="seek-bar">
+                <div class="seek-progress" :style="{ width: seekProgress + '%' }"></div>
+              </div>
+              <div class="seek-time">
+                <span>{{ formatTime(seekCurrentTime) }}</span>
+                <span class="seek-duration">{{ formatTime(videoDuration) }}</span>
+              </div>
+              <div class="seek-amount">
+                <span v-if="seekAmount > 0">+{{ seekAmount }}秒</span>
+                <span v-else-if="seekAmount < 0">{{ seekAmount }}秒</span>
+              </div>
+            </div>
           </div>
+
+          <!-- 发现页面刷新提示 -->
+          <div v-if="playlistType === 'random' && showRefreshPrompt" class="refresh-prompt">
+            <div class="refresh-content">
+              <div class="refresh-text">已到达当前随机列表末尾</div>
+              <button class="refresh-button" @click.stop="generateNewRandomList">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M23 4v6h-6"></path>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+                生成新随机列表
+              </button>
+            </div>
+            </div>
         </div>
-      </div>
+      </transition>
     </div>
   </transition>
 </template>
@@ -117,7 +148,7 @@ export default {
     },
     video: {
       type: Object,
-      required: true
+      default: () => ({})
     },
     playlistType: {
       type: String,
@@ -148,7 +179,23 @@ export default {
     const isTransitioning = ref(false)
     const touchStartY = ref(0)
     const touchEndY = ref(0)
+    const touchStartX = ref(0)
+    const touchCurrentX = ref(0)
     const swipeThreshold = 100
+    
+    // 长按2倍速相关状态
+    const longPressTimer = ref(null)
+    const isLongPressing = ref(false)
+    const originalPlaybackRate = ref(1)
+    
+    // 进度条快进相关状态
+    const showSeekBar = ref(false)
+    const seekStartTime = ref(0)
+    const seekCurrentTime = ref(0)
+    const seekAmount = ref(0)
+    const seekProgress = ref(0)
+    const videoDuration = ref(0)
+    const isSeeking = ref(false)
     
     // 播放列表相关状态
     const currentVideo = ref({})
@@ -244,9 +291,17 @@ export default {
       if (isTransitioning.value) return
       
       const nextIndex = currentVideoIndex.value + 1
+      console.log('尝试加载下一个视频:', {
+        currentIndex: currentVideoIndex.value,
+        nextIndex: nextIndex,
+        playlistLength: playlistVideos.value.length,
+        playlistVideos: playlistVideos.value
+      })
+      
       if (nextIndex < playlistVideos.value.length) {
         switchVideo(nextIndex)
       } else {
+        console.log('已到达播放列表末尾，无法继续切换')
         // 边界处理
         if (playlistType.value === 'random' && nextIndex === 200) {
           showRefreshPrompt.value = true
@@ -295,31 +350,127 @@ export default {
       await checkFavoriteStatus()
       await checkDislikeStatus()
       
-      // 短暂延迟后播放新视频
-      setTimeout(async () => {
-        await nextTick()
+      // 立即设置视频源并尝试播放
+      await nextTick()
+      if (videoRef.value) {
+        videoRef.value.src = currentVideo.value.url
+        videoRef.value.load() // 强制加载新源
+        videoRef.value.muted = true // 静音以提高自动播放成功率
+        videoRef.value.preload = 'auto' // 预加载
+      }
+      
+      // 尝试立即播放
+      try {
         await playVideo()
         isTransitioning.value = false
-      }, 300)
+      } catch (error) {
+        // 如果播放失败，等待canplay事件
+        console.log('等待视频加载完成...')
+        const playOnReady = () => {
+          playVideo()
+          videoRef.value.removeEventListener('canplay', playOnReady)
+        }
+        videoRef.value.addEventListener('canplay', playOnReady)
+      }
     }
     
     // 触摸事件处理
     const handleTouchStart = (event) => {
       touchStartY.value = event.touches[0].clientY
+      touchStartX.value = event.touches[0].clientX
+      touchCurrentX.value = touchStartX.value
+      
+      // 开始长按计时器（2倍速播放）
+      longPressTimer.value = setTimeout(() => {
+        if (videoRef.value && !isLongPressing.value) {
+          isLongPressing.value = true
+          originalPlaybackRate.value = videoRef.value.playbackRate
+          videoRef.value.playbackRate = 2.0 // 2倍速播放
+        }
+      }, 500) // 长按500ms触发
+      
+      // 初始化进度条快进状态
+      if (videoRef.value) {
+        seekStartTime.value = videoRef.value.currentTime
+        seekCurrentTime.value = seekStartTime.value
+        videoDuration.value = videoRef.value.duration || 0
+        isSeeking.value = false
+      }
     }
     
     const handleTouchMove = (event) => {
-      // 可以添加水平滑动进度条功能
+      if (!event.touches.length) return
+      
+      touchCurrentX.value = event.touches[0].clientX
+      const deltaX = touchCurrentX.value - touchStartX.value
+      
+      // 水平滑动超过阈值，开始进度条快进
+      if (Math.abs(deltaX) > 20 && videoRef.value) {
+        // 取消长按计时器
+        if (longPressTimer.value) {
+          clearTimeout(longPressTimer.value)
+          longPressTimer.value = null
+        }
+        
+        // 停止长按2倍速
+        if (isLongPressing.value) {
+          isLongPressing.value = false
+          videoRef.value.playbackRate = originalPlaybackRate.value
+        }
+        
+        // 开始进度条快进
+        if (!isSeeking.value) {
+          isSeeking.value = true
+          showSeekBar.value = true
+        }
+        
+        // 计算快进量（每10像素对应1秒）
+        const seekSeconds = Math.round(deltaX / 10)
+        seekAmount.value = seekSeconds
+        seekCurrentTime.value = Math.max(0, Math.min(videoDuration.value, seekStartTime.value + seekSeconds))
+        seekProgress.value = (seekCurrentTime.value / videoDuration.value) * 100
+      }
     }
     
     const handleTouchEnd = (event) => {
+      // 取消长按计时器
+      if (longPressTimer.value) {
+        clearTimeout(longPressTimer.value)
+        longPressTimer.value = null
+      }
+      
+      // 恢复长按2倍速
+      if (isLongPressing.value) {
+        isLongPressing.value = false
+        if (videoRef.value) {
+          videoRef.value.playbackRate = originalPlaybackRate.value
+        }
+      }
+      
+      // 处理进度条快进
+      if (isSeeking.value && videoRef.value) {
+        // 应用快进
+        videoRef.value.currentTime = seekCurrentTime.value
+        showSeekBar.value = false
+        isSeeking.value = false
+        
+        // 如果视频暂停，播放视频
+        if (videoRef.value.paused) {
+          playVideo()
+        }
+      }
+      
+      // 处理垂直滑动切换视频
       touchEndY.value = event.changedTouches[0].clientY
       const swipeDistance = touchEndY.value - touchStartY.value
       
-      if (Math.abs(swipeDistance) > swipeThreshold) {
+      // 判断滑动方向和距离（只在没有进行进度条快进时）
+      if (!isSeeking.value && Math.abs(swipeDistance) > swipeThreshold) {
         if (swipeDistance > 0) {
+          // 向下滑动，加载前一个视频
           loadPrevVideo()
         } else {
+          // 向上滑动，加载下一个视频
           loadNextVideo()
         }
       }
@@ -443,6 +594,14 @@ export default {
       if (!filename) return ''
       const baseName = filename.split('/').pop().split('\\').pop()
       return baseName.replace(/\.[^/.]+$/, "")
+    }
+
+    // 格式化时间显示（秒 → 分:秒）
+    const formatTime = (seconds) => {
+      if (!seconds || isNaN(seconds)) return '00:00'
+      const mins = Math.floor(seconds / 60)
+      const secs = Math.floor(seconds % 60)
+      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
     }
     
     // 监听visible变化
@@ -708,5 +867,75 @@ export default {
   align-items: center;
   gap: 8px;
   cursor: pointer;
+}
+
+/* 滑动动画 */
+.slide-enter-active,
+.slide-leave-active {
+  transition: transform 0.5s ease;
+}
+
+.slide-enter-from {
+  transform: translateY(var(--slide-direction, 100%));
+}
+
+.slide-leave-to {
+  transform: translateY(calc(var(--slide-direction, 100%) * -1));
+}
+
+/* 进度条快进样式 */
+.seek-bar-overlay {
+  position: absolute;
+  bottom: 100px;
+  left: 0;
+  right: 0;
+  z-index: 25;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 16px;
+}
+
+.seek-bar-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.seek-bar {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.seek-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: #ff6b81;
+  border-radius: 2px;
+  transition: width 0.1s ease;
+}
+
+.seek-time {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  color: white;
+  font-size: 0.9rem;
+}
+
+.seek-duration {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.seek-amount {
+  color: #ff6b81;
+  font-size: 1rem;
+  font-weight: bold;
+  margin-top: 4px;
 }
 </style>
