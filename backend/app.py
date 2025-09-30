@@ -203,7 +203,12 @@ def get_video_file(filename):
 
 @app.route('/thumbnails/<filename>')
 def serve_thumbnail(filename):
-    """直接提供缩略图静态文件访问"""
+    """直接提供缩略图静态文件访问（保持向后兼容）"""
+    return send_from_directory(app.config['THUMBNAIL_FOLDER'], filename)
+
+@app.route('/api/thumbnails/<filename>')
+def serve_thumbnail_api(filename):
+    """通过API路径提供缩略图静态文件访问"""
     return send_from_directory(app.config['THUMBNAIL_FOLDER'], filename)
 
 @app.route('/api/scan', methods=['POST'])
@@ -358,7 +363,7 @@ def list_videos():
             'items': [{
                 'id': v.id,
                 'filename': v.filename,
-                'thumbnail_url': f'/thumbnails/{os.path.basename(v.thumbnail_path)}' if v.thumbnail_path else None
+                'thumbnail_url': f'/api/thumbnails/{os.path.basename(v.thumbnail_path)}' if v.thumbnail_path else None
             } for v in ordered_videos],
             'has_next': has_next,
             'total': total_videos
@@ -384,7 +389,7 @@ def list_videos():
             'items': [{
                 'id': v.id,
                 'filename': v.filename,
-                'thumbnail_url': f'/thumbnails/{os.path.basename(v.thumbnail_path)}' if v.thumbnail_path else None
+                'thumbnail_url': f'/api/thumbnails/{os.path.basename(v.thumbnail_path)}' if v.thumbnail_path else None
             } for v in pagination.items],
             'has_next': pagination.has_next,
             'total': pagination.total
@@ -437,7 +442,7 @@ def get_favorites():
             favorite_videos.append({
                 'id': video.id,
                 'filename': video.filename,
-                'thumbnail_url': f'/thumbnails/{os.path.basename(video.thumbnail_path)}' if video.thumbnail_path else None
+                'thumbnail_url': f'/api/thumbnails/{os.path.basename(video.thumbnail_path)}' if video.thumbnail_path else None
             })
     
     return jsonify({
@@ -546,7 +551,7 @@ def get_dislikes():
             dislike_videos.append({
                 'id': video.id,
                 'filename': video.filename,
-                'thumbnail_url': f'/thumbnails/{os.path.basename(video.thumbnail_path)}' if video.thumbnail_path else None
+                'thumbnail_url': f'/api/thumbnails/{os.path.basename(video.thumbnail_path)}' if video.thumbnail_path else None
             })
     
     return jsonify(dislike_videos)
