@@ -20,16 +20,12 @@
         >
           <div class="video-thumbnail">
             <img 
-              v-if="video.thumbnail_url"
               class="thumbnail-image"
-              :src="video.thumbnail_url"
+              :src="getThumbnailUrl(video)"
               :alt="removeFileExtension(video.filename)"
               @load="handleThumbnailLoad(video.id)"
               @error="handleThumbnailError(video.id)"
             />
-            <div v-else class="thumbnail-placeholder">
-              <div class="loading-spinner"></div>
-            </div>
             <div class="video-title-overlay">
               {{ removeFileExtension(video.filename) }}
             </div>
@@ -449,36 +445,33 @@ export default {
       modalPlayerVisible.value = false
     }
 
+    // 获取缩略图URL - 优化逻辑
+    const getThumbnailUrl = (video) => {
+      const baseUrl = import.meta.env.DEV 
+        ? '/api' 
+        : `${window.location.protocol}//${window.location.hostname}:5003/api`;
+      
+      // 如果后端返回了缩略图URL，直接使用
+      if (video.thumbnail_url) {
+        return video.thumbnail_url
+      }
+      
+      // 如果没有缩略图URL，直接调用缩略图生成接口
+      // 使用 /api/thumbnail/<video_id> 接口，后端会自动生成并返回缩略图
+      return `${baseUrl}/thumbnail/${video.id}`
+    }
+
     // 缩略图加载成功处理
     const handleThumbnailLoad = (videoId) => {
       console.log(`缩略图加载成功: ${videoId}`)
     }
 
-    // 缩略图加载失败处理 - 自动生成缩略图
+    // 缩略图加载失败处理 - 简化逻辑
     const handleThumbnailError = async (videoId) => {
-      console.log(`缩略图加载失败，尝试生成: ${videoId}`)
-      
-      try {
-        const baseUrl = import.meta.env.DEV 
-          ? '/api' 
-          : `${window.location.protocol}//${window.location.hostname}:5003/api`;
-        
-        // 调用缩略图生成API
-        const response = await fetch(`${baseUrl}/thumbnail/${videoId}`)
-        if (response.ok) {
-          console.log(`缩略图生成成功: ${videoId}`)
-          // 更新该视频的缩略图URL，触发重新渲染
-          const videoIndex = videos.value.findIndex(v => v.id === videoId)
-          if (videoIndex !== -1) {
-            // 重新设置缩略图URL为API路径
-            videos.value[videoIndex].thumbnail_url = `${baseUrl}/thumbnail/${videoId}`
-            // 强制更新视图
-            videos.value = [...videos.value]
-          }
-        }
-      } catch (error) {
-        console.error(`触发缩略图生成失败: ${videoId}`, error)
-      }
+      console.log(`缩略图加载失败: ${videoId}`)
+      // 由于我们直接使用 /api/thumbnail/<video_id> 接口，理论上不应该出现404错误
+      // 如果出现错误，可能是网络问题或后端服务异常
+      console.warn(`缩略图加载异常，视频ID: ${videoId}`)
     }
 
     // 预生成缩略图功能
@@ -499,7 +492,8 @@ export default {
             // 更新该视频的缩略图URL，触发重新渲染
             const videoIndex = videos.value.findIndex(v => v.id === video.id)
             if (videoIndex !== -1) {
-              videos.value[videoIndex].thumbnail_url = `${baseUrl}/thumbnail/${video.id}`
+              const video = videos.value[videoIndex]
+              videos.value[videoIndex].thumbnail_url = `${baseUrl}/thumbnails/${video.id}_${encodeURIComponent(video.filename)}.jpg`
               videos.value = [...videos.value]
             }
           } catch (error) {
@@ -519,6 +513,7 @@ export default {
       loading,
       hasMore,
       activeTab,
+      randomSeed,
       modalPlayerVisible,
       currentPlayingVideo,
       currentPlayingIndex,
@@ -526,6 +521,7 @@ export default {
       encodeVideoUrl,
       openPlayer,
       removeFileExtension,
+      getThumbnailUrl,
       handleVideoChange,
       handleModalClose,
       handleListRefresh,

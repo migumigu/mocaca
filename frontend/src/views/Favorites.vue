@@ -36,14 +36,12 @@
         >
           <div class="video-thumbnail">
             <img 
-              v-if="video.thumbnail_url"
               class="thumbnail-image"
-              :src="video.thumbnail_url"
+              :src="getThumbnailUrl(video)"
               :alt="removeFileExtension(video.filename)"
+              @load="handleThumbnailLoad(video.id)"
+              @error="handleThumbnailError(video.id)"
             />
-            <div v-else class="thumbnail-placeholder">
-              <div class="loading-spinner"></div>
-            </div>
             <div class="video-title-overlay">
               {{ removeFileExtension(video.filename) }}
             </div>
@@ -98,7 +96,7 @@
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import NavIcons from '../components/icons/NavIcons.vue'
 import ModalVideoPlayer from '../components/ModalVideoPlayer.vue'
@@ -185,6 +183,33 @@ export default {
       return baseName.replace(/\.[^/.]+$/, "")
     }
 
+    // 获取缩略图URL - 优化逻辑
+    const getThumbnailUrl = (video) => {
+      const baseUrl = getBaseUrl()
+      
+      // 如果后端返回了缩略图URL，直接使用
+      if (video.thumbnail_url) {
+        return video.thumbnail_url
+      }
+      
+      // 如果没有缩略图URL，直接调用缩略图生成接口
+      // 使用 /api/thumbnail/<video_id> 接口，后端会自动生成并返回缩略图
+      return `${baseUrl}/thumbnail/${video.id}`
+    }
+
+    // 缩略图加载成功处理
+    const handleThumbnailLoad = (videoId) => {
+      console.log(`收藏页面缩略图加载成功: ${videoId}`)
+    }
+
+    // 缩略图加载失败处理 - 简化逻辑
+    const handleThumbnailError = async (videoId) => {
+      console.log(`收藏页面缩略图加载失败: ${videoId}`)
+      // 由于我们直接使用 /api/thumbnail/<video_id> 接口，理论上不应该出现404错误
+      // 如果出现错误，可能是网络问题或后端服务异常
+      console.warn(`缩略图加载异常，视频ID: ${videoId}`)
+    }
+
     const openPlayer = (video) => {
       if (!video || !video.id) {
         console.error('视频数据不完整:', video)
@@ -250,10 +275,13 @@ export default {
       currentPlayingVideo,
       currentPlayingIndex,
       removeFileExtension,
+      getThumbnailUrl,
       openPlayer,
       goToLogin,
       handleVideoChange,
-      handleModalClose
+      handleModalClose,
+      handleThumbnailLoad,
+      handleThumbnailError
     }
   }
 }
