@@ -24,6 +24,8 @@
               class="thumbnail-image"
               :src="video.thumbnail_url"
               :alt="removeFileExtension(video.filename)"
+              @load="handleThumbnailLoad(video.id)"
+              @error="handleThumbnailError(video.id)"
             />
             <div v-else class="thumbnail-placeholder">
               <div class="loading-spinner"></div>
@@ -278,6 +280,11 @@ export default {
       
       // 添加页面离开时的缓存保存
       window.addEventListener('beforeunload', saveCacheData)
+      
+      // 页面加载后，自动为前几个视频生成缩略图
+      setTimeout(() => {
+        preGenerateThumbnails()
+      }, 2000)
     })
     
     // 组件卸载时清理事件监听器
@@ -442,6 +449,66 @@ export default {
       modalPlayerVisible.value = false
     }
 
+    // 缩略图加载成功处理
+    const handleThumbnailLoad = (videoId) => {
+      console.log(`缩略图加载成功: ${videoId}`)
+    }
+
+    // 缩略图加载失败处理 - 自动生成缩略图
+    const handleThumbnailError = async (videoId) => {
+      console.log(`缩略图加载失败，尝试生成: ${videoId}`)
+      
+      try {
+        const baseUrl = import.meta.env.DEV 
+          ? '/api' 
+          : `${window.location.protocol}//${window.location.hostname}:5003/api`;
+        
+        // 调用缩略图生成API
+        const response = await fetch(`${baseUrl}/thumbnail/${videoId}`)
+        if (response.ok) {
+          console.log(`缩略图生成成功: ${videoId}`)
+          // 更新该视频的缩略图URL，触发重新渲染
+          const videoIndex = videos.value.findIndex(v => v.id === videoId)
+          if (videoIndex !== -1) {
+            // 重新设置缩略图URL为API路径
+            videos.value[videoIndex].thumbnail_url = `${baseUrl}/thumbnail/${videoId}`
+            // 强制更新视图
+            videos.value = [...videos.value]
+          }
+        }
+      } catch (error) {
+        console.error(`触发缩略图生成失败: ${videoId}`, error)
+      }
+    }
+
+    // 预生成缩略图功能
+    const preGenerateThumbnails = async (startIndex = 0, count = 5) => {
+      // 为指定范围的视频预生成缩略图
+      const endIndex = Math.min(startIndex + count, videos.value.length)
+      const videosToPreGenerate = videos.value.slice(startIndex, endIndex)
+      
+      for (const video of videosToPreGenerate) {
+        if (!video.thumbnail_url) {
+          try {
+            const baseUrl = import.meta.env.DEV 
+              ? '/api' 
+              : `${window.location.protocol}//${window.location.hostname}:5003/api`;
+            
+            await fetch(`${baseUrl}/thumbnail/${video.id}`)
+            console.log(`预生成缩略图: ${video.id}`)
+            // 更新该视频的缩略图URL，触发重新渲染
+            const videoIndex = videos.value.findIndex(v => v.id === video.id)
+            if (videoIndex !== -1) {
+              videos.value[videoIndex].thumbnail_url = `${baseUrl}/thumbnail/${video.id}`
+              videos.value = [...videos.value]
+            }
+          } catch (error) {
+            console.error(`预生成缩略图失败: ${video.id}`, error)
+          }
+        }
+      }
+    }
+
 
 
 
@@ -462,7 +529,10 @@ export default {
       handleVideoChange,
       handleModalClose,
       handleListRefresh,
-      switchTab
+      switchTab,
+      handleThumbnailError,
+      handleThumbnailLoad,
+      preGenerateThumbnails
     }
   }
 }
