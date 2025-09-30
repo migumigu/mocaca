@@ -62,6 +62,20 @@
         <span>我</span>
       </div>
     </div>
+    
+    <!-- 模态框播放器 -->
+    <ModalVideoPlayer
+      :visible="modalPlayerVisible"
+      :video="currentPlayingVideo"
+      :playlist-type="activeTab"
+      :playlist-seed="activeTab === 'random' ? randomSeed : null"
+      :playlist-videos="videos"
+      :current-index="currentPlayingIndex"
+      :from-page="activeTab"
+      @close="handleModalClose"
+      @video-change="handleVideoChange"
+      @list-refresh="handleListRefresh"
+    />
   </div>
 </template>
 
@@ -69,10 +83,12 @@
 import { ref, onMounted, nextTick, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import NavIcons from '../components/icons/NavIcons.vue'
+import ModalVideoPlayer from '../components/ModalVideoPlayer.vue'
 
 export default {
   components: {
-    NavIcons
+    NavIcons,
+    ModalVideoPlayer
   },
   setup() {
     const videos = ref([])
@@ -89,6 +105,11 @@ export default {
     // 缓存相关状态
     const cacheKey = ref('')
     const cachedData = ref(null)
+    
+    // 模态框播放器相关状态
+    const modalPlayerVisible = ref(false)
+    const currentPlayingVideo = ref(null)
+    const currentPlayingIndex = ref(-1)
     
 
     
@@ -369,30 +390,56 @@ export default {
     }
 
     const openPlayer = (video) => {
-      console.log('=== 从发现页面打开播放器 ===')
+      console.log('=== 从发现页面打开模态框播放器 ===')
       console.log('点击的视频信息:', video)
       console.log('当前随机种子:', randomSeed.value)
       console.log('当前播放列表类型:', activeTab.value)
       console.log('当前视频列表长度:', videos.value.length)
-      console.log('当前视频列表前10个视频ID:', videos.value.slice(0, 10).map(v => v.id))
       
-      // 保存当前点击的卡片在数组中的实际索引
+      // 获取当前视频在列表中的索引
       const cardIndex = videos.value.findIndex(v => v.id === video.id)
       console.log('当前视频在列表中的索引:', cardIndex)
       
       if (cardIndex !== -1) {
-        sessionStorage.setItem('videoListCardIndex', cardIndex.toString())
-        console.log('已保存索引到sessionStorage:', cardIndex)
+        // 设置模态框播放器状态
+        currentPlayingVideo.value = video
+        currentPlayingIndex.value = cardIndex
+        modalPlayerVisible.value = true
+        console.log('打开模态框播放器，索引:', cardIndex)
       }
+    }
+    
+    // 处理模态框播放器视频切换
+    const handleVideoChange = (data) => {
+      console.log('模态框播放器视频切换:', data)
+      currentPlayingVideo.value = { ...data.video }
+      currentPlayingIndex.value = data.index
       
-      router.push({
-        name: 'Player',
-        params: { id: video.id },
-        query: {
-          playlistType: activeTab.value,
-          seed: activeTab.value === 'random' ? randomSeed.value : undefined
-        }
-      })
+      // 确保播放列表数据同步更新
+      if (data.index >= 0 && data.index < videos.value.length) {
+        videos.value[data.index] = { ...data.video }
+      }
+    }
+    
+    // 处理模态框播放器关闭
+    const handleModalClose = () => {
+      modalPlayerVisible.value = false
+      currentPlayingVideo.value = null
+      currentPlayingIndex.value = -1
+    }
+    
+    // 处理模态框播放器列表刷新（随机列表）
+    const handleListRefresh = () => {
+      console.log('刷新随机列表')
+      // 重新生成随机种子
+      randomSeed.value = Date.now()
+      // 重新加载视频列表
+      videos.value = []
+      page.value = 1
+      hasMore.value = true
+      loadVideos()
+      // 关闭模态框
+      modalPlayerVisible.value = false
     }
 
 
@@ -405,11 +452,16 @@ export default {
       loading,
       hasMore,
       activeTab,
+      modalPlayerVisible,
+      currentPlayingVideo,
+      currentPlayingIndex,
       handleScroll,
       encodeVideoUrl,
       openPlayer,
       removeFileExtension,
-
+      handleVideoChange,
+      handleModalClose,
+      handleListRefresh,
       switchTab
     }
   }

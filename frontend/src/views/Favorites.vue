@@ -82,6 +82,18 @@
         <span>我</span>
       </div>
     </div>
+    
+    <!-- 模态框播放器 -->
+    <ModalVideoPlayer
+      :visible="modalPlayerVisible"
+      :video="currentPlayingVideo"
+      :playlist-type="'favorites'"
+      :playlist-videos="favorites"
+      :current-index="currentPlayingIndex"
+      :from-page="'favorites'"
+      @close="handleModalClose"
+      @video-change="handleVideoChange"
+    />
   </div>
 </template>
 
@@ -89,10 +101,12 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import NavIcons from '../components/icons/NavIcons.vue'
+import ModalVideoPlayer from '../components/ModalVideoPlayer.vue'
 
 export default {
   components: {
-    NavIcons
+    NavIcons,
+    ModalVideoPlayer
   },
   setup() {
     const router = useRouter()
@@ -102,6 +116,11 @@ export default {
     const hasMore = ref(true)
     const currentPage = ref(1)
     const totalPages = ref(1)
+    
+    // 模态框播放器相关状态
+    const modalPlayerVisible = ref(false)
+    const currentPlayingVideo = ref(null)
+    const currentPlayingIndex = ref(-1)
 
     const getBaseUrl = () => {
       return import.meta.env.DEV 
@@ -172,11 +191,35 @@ export default {
         return
       }
       
-      router.push({
-        name: 'Player',
-        params: { id: video.id },
-        query: { from: 'favorites' }
-      })
+      // 获取当前视频在收藏列表中的索引
+      const cardIndex = favorites.value.findIndex(v => v.id === video.id)
+      console.log('收藏列表打开模态框播放器，索引:', cardIndex)
+      
+      if (cardIndex !== -1) {
+        // 设置模态框播放器状态
+        currentPlayingVideo.value = video
+        currentPlayingIndex.value = cardIndex
+        modalPlayerVisible.value = true
+      }
+    }
+    
+    // 处理模态框播放器视频切换
+    const handleVideoChange = (data) => {
+      console.log('收藏列表模态框播放器视频切换:', data)
+      currentPlayingVideo.value = { ...data.video }
+      currentPlayingIndex.value = data.index
+      
+      // 确保收藏列表数据同步更新
+      if (data.index >= 0 && data.index < favorites.value.length) {
+        favorites.value[data.index] = { ...data.video }
+      }
+    }
+    
+    // 处理模态框播放器关闭
+    const handleModalClose = () => {
+      modalPlayerVisible.value = false
+      currentPlayingVideo.value = null
+      currentPlayingIndex.value = -1
     }
 
     const goToLogin = () => {
@@ -203,9 +246,14 @@ export default {
       currentUser,
       favorites,
       loading,
+      modalPlayerVisible,
+      currentPlayingVideo,
+      currentPlayingIndex,
       removeFileExtension,
       openPlayer,
-      goToLogin
+      goToLogin,
+      handleVideoChange,
+      handleModalClose
     }
   }
 }
