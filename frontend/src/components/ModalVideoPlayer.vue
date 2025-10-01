@@ -31,8 +31,9 @@
             x5-playsinline
             autoplay
             @click="togglePlay"
-            @loadstart="isLoading = true"
-            @canplay="isLoading = false"
+            @loadstart="handleVideoLoadStart"
+            @loadedmetadata="handleVideoLoadedMetadata"
+            @canplay="handleVideoCanPlay"
             @ended="handleVideoEnded"
           ></video>
           
@@ -249,18 +250,82 @@ export default {
     
     // 播放视频
     const playVideo = async () => {
-      if (!videoRef.value) return
+      if (!videoRef.value) {
+        console.log('videoRef为null，无法播放')
+        return false
+      }
+      
+      console.log('开始播放视频，当前视频状态:', {
+        paused: videoRef.value.paused,
+        readyState: videoRef.value.readyState,
+        currentTime: videoRef.value.currentTime,
+        ended: videoRef.value.ended,
+        muted: videoRef.value.muted
+      })
       
       try {
-        videoRef.value.muted = false
-        await videoRef.value.play().catch(() => {
-          videoRef.value.muted = true
-          return videoRef.value.play()
+        const playPromise = videoRef.value.play()
+        
+        // 处理播放Promise
+        await playPromise.catch(async (error) => {
+          console.log('第一次播放失败，尝试延迟播放:', error)
+          // 延迟后重试播放
+          await new Promise(resolve => setTimeout(resolve, 500))
+          if (videoRef.value) {
+            return videoRef.value.play()
+          }
+          throw error
         })
-        isPlaying.value = true
+        
+        console.log('播放命令已发送，等待播放状态确认...')
+        
+        // 添加播放状态验证
+        const playSuccess = await new Promise((resolve) => {
+          let attempts = 0
+          const maxAttempts = 15
+          
+          const checkPlayState = () => {
+            if (!videoRef.value) {
+              console.log('videoRef为null，停止播放状态检查')
+              resolve(false)
+              return
+            }
+            
+            attempts++
+            console.log(`播放状态检查第${attempts}次:`, {
+              paused: videoRef.value.paused,
+              readyState: videoRef.value.readyState,
+              currentTime: videoRef.value.currentTime
+            })
+            
+            // 只要视频不在暂停状态就认为播放成功
+            if (!videoRef.value.paused) {
+              console.log('视频确认开始播放')
+              isPlaying.value = true
+              resolve(true)
+            } else if (attempts >= maxAttempts) {
+              console.log('播放状态检查超时，视频可能被浏览器阻止')
+              // 即使超时也返回false而不是reject，避免阻塞流程
+              resolve(false)
+            } else {
+              setTimeout(checkPlayState, 200)
+            }
+          }
+          checkPlayState()
+        })
+        
+        if (playSuccess) {
+          console.log('视频播放成功，当前播放状态:', isPlaying.value)
+        } else {
+          console.log('视频播放可能被浏览器阻止')
+          isPlaying.value = false
+        }
+        
+        return playSuccess
       } catch (error) {
         console.error('视频播放失败:', error)
         isPlaying.value = false
+        return false
       }
     }
     
@@ -280,22 +345,72 @@ export default {
       }
     }
     
+    // 视频加载开始
+    const handleVideoLoadStart = () => {
+      console.log('=== 视频加载开始 ===')
+      console.log('视频元素尺寸:', {
+        width: videoRef.value?.offsetWidth,
+        height: videoRef.value?.offsetHeight,
+        clientWidth: videoRef.value?.clientWidth,
+        clientHeight: videoRef.value?.clientHeight,
+        videoWidth: videoRef.value?.videoWidth,
+        videoHeight: videoRef.value?.videoHeight
+      })
+      isLoading.value = true
+    }
+
+    // 视频元数据加载完成
+    const handleVideoLoadedMetadata = () => {
+      console.log('=== 视频元数据加载完成 ===')
+      console.log('视频原始尺寸:', {
+        videoWidth: videoRef.value?.videoWidth,
+        videoHeight: videoRef.value?.videoHeight,
+        duration: videoRef.value?.duration
+      })
+      console.log('视频元素当前尺寸:', {
+        offsetWidth: videoRef.value?.offsetWidth,
+        offsetHeight: videoRef.value?.offsetHeight,
+        clientWidth: videoRef.value?.clientWidth,
+        clientHeight: videoRef.value?.clientHeight
+      })
+    }
+
+    // 视频可以播放
+    const handleVideoCanPlay = () => {
+      console.log('=== 视频可以播放 ===')
+      console.log('视频元素最终尺寸:', {
+        offsetWidth: videoRef.value?.offsetWidth,
+        offsetHeight: videoRef.value?.offsetHeight,
+        clientWidth: videoRef.value?.clientWidth,
+        clientHeight: videoRef.value?.clientHeight,
+        videoWidth: videoRef.value?.videoWidth,
+        videoHeight: videoRef.value?.videoHeight
+      })
+      isLoading.value = false
+    }
+
     // 视频结束处理
     const handleVideoEnded = () => {
+      console.log('=== 视频播放完成，自动切换到下一个视频 ===')
+      console.log('视频结束时间:', videoRef.value?.currentTime, '视频总时长:', videoRef.value?.duration)
       isPlaying.value = false
       loadNextVideo()
     }
     
     // 加载下一个视频
     const loadNextVideo = () => {
-      if (isTransitioning.value) return
+      if (isTransitioning.value) {
+        console.log('正在切换中，跳过重复切换')
+        return
+      }
       
       const nextIndex = currentVideoIndex.value + 1
-      console.log('尝试加载下一个视频:', {
+      console.log('=== 加载下一个视频 ===', {
         currentIndex: currentVideoIndex.value,
         nextIndex: nextIndex,
         playlistLength: playlistVideos.value.length,
-        playlistVideos: playlistVideos.value
+        isTransitioning: isTransitioning.value,
+        source: '视频播放完成或向上滑动'
       })
       
       if (nextIndex < playlistVideos.value.length) {
@@ -314,11 +429,23 @@ export default {
     
     // 加载上一个视频
     const loadPrevVideo = () => {
-      if (isTransitioning.value) return
+      if (isTransitioning.value) {
+        console.log('正在切换中，跳过重复切换')
+        return
+      }
       
       const prevIndex = currentVideoIndex.value - 1
+      console.log('=== 加载上一个视频 ===', {
+        currentIndex: currentVideoIndex.value,
+        prevIndex: prevIndex,
+        isTransitioning: isTransitioning.value,
+        source: '向下滑动'
+      })
+      
       if (prevIndex >= 0) {
         switchVideo(prevIndex)
+      } else {
+        console.log('已到达播放列表开头，无法继续切换')
       }
     }
     
@@ -334,10 +461,11 @@ export default {
       currentVideo.value = { ...playlistVideos.value[newIndex] }
       currentVideo.value.url = `${getBaseUrl()}/videos/file/${encodeURIComponent(currentVideo.value.filename)}`
       
-      console.log('切换视频:', {
+      console.log('=== 切换视频 ===', {
         from: props.currentIndex,
         to: newIndex,
-        video: currentVideo.value
+        video: currentVideo.value,
+        isTransitioning: isTransitioning.value
       })
       
       // 通知父组件视频切换
@@ -353,24 +481,75 @@ export default {
       // 立即设置视频源并尝试播放
       await nextTick()
       if (videoRef.value) {
+        console.log('设置新视频源:', currentVideo.value.url)
         videoRef.value.src = currentVideo.value.url
         videoRef.value.load() // 强制加载新源
-        videoRef.value.muted = true // 静音以提高自动播放成功率
         videoRef.value.preload = 'auto' // 预加载
+        
+        // 检查视频的readyState
+        console.log('视频加载状态:', {
+          readyState: videoRef.value.readyState,
+          HAVE_NOTHING: videoRef.value.HAVE_NOTHING,
+          HAVE_METADATA: videoRef.value.HAVE_METADATA,
+          HAVE_CURRENT_DATA: videoRef.value.HAVE_CURRENT_DATA,
+          HAVE_FUTURE_DATA: videoRef.value.HAVE_FUTURE_DATA,
+          HAVE_ENOUGH_DATA: videoRef.value.HAVE_ENOUGH_DATA
+        })
       }
       
-      // 尝试立即播放
+      // 等待视频加载完成后再尝试播放
+      const waitForVideoReady = () => {
+        return new Promise((resolve) => {
+          if (!videoRef.value) {
+            console.log('videoRef为null，跳过等待')
+            resolve()
+            return
+          }
+          
+          if (videoRef.value.readyState >= videoRef.value.HAVE_ENOUGH_DATA) {
+            console.log('视频已准备好，立即播放')
+            resolve()
+            return
+          }
+          
+          console.log('等待视频加载完成...')
+          const onCanPlay = () => {
+            console.log('视频canplay事件触发，开始播放')
+            if (videoRef.value) {
+              videoRef.value.removeEventListener('canplay', onCanPlay)
+            }
+            resolve()
+          }
+          
+          if (videoRef.value) {
+            videoRef.value.addEventListener('canplay', onCanPlay)
+          }
+          
+          // 超时保护
+          setTimeout(() => {
+            console.log('视频加载超时，强制尝试播放')
+            if (videoRef.value) {
+              videoRef.value.removeEventListener('canplay', onCanPlay)
+            }
+            resolve()
+          }, 3000)
+        })
+      }
+      
       try {
-        await playVideo()
-        isTransitioning.value = false
-      } catch (error) {
-        // 如果播放失败，等待canplay事件
-        console.log('等待视频加载完成...')
-        const playOnReady = () => {
-          playVideo()
-          videoRef.value.removeEventListener('canplay', playOnReady)
+        await waitForVideoReady()
+        const playSuccess = await playVideo()
+        
+        if (playSuccess) {
+          console.log('切换视频后播放成功，重置isTransitioning状态')
+          isTransitioning.value = false
+        } else {
+          console.log('播放失败，但重置isTransitioning状态避免阻塞')
+          isTransitioning.value = false
         }
-        videoRef.value.addEventListener('canplay', playOnReady)
+      } catch (error) {
+        console.log('切换视频播放失败:', error)
+        isTransitioning.value = false
       }
     }
     
@@ -380,12 +559,18 @@ export default {
       touchStartX.value = event.touches[0].clientX
       touchCurrentX.value = touchStartX.value
       
+      console.log('=== 触摸开始 ===', {
+        startY: touchStartY.value,
+        startX: touchStartX.value
+      })
+      
       // 开始长按计时器（2倍速播放）
       longPressTimer.value = setTimeout(() => {
         if (videoRef.value && !isLongPressing.value) {
           isLongPressing.value = true
           originalPlaybackRate.value = videoRef.value.playbackRate
           videoRef.value.playbackRate = 2.0 // 2倍速播放
+          console.log('长按2倍速播放激活')
         }
       }, 500) // 长按500ms触发
       
@@ -403,6 +588,15 @@ export default {
       
       touchCurrentX.value = event.touches[0].clientX
       const deltaX = touchCurrentX.value - touchStartX.value
+      const deltaY = event.touches[0].clientY - touchStartY.value
+      
+      console.log('=== 触摸移动 ===', {
+        currentX: touchCurrentX.value,
+        currentY: event.touches[0].clientY,
+        deltaX: deltaX,
+        deltaY: deltaY,
+        isSeeking: isSeeking.value
+      })
       
       // 水平滑动超过阈值，开始进度条快进
       if (Math.abs(deltaX) > 20 && videoRef.value) {
@@ -410,18 +604,21 @@ export default {
         if (longPressTimer.value) {
           clearTimeout(longPressTimer.value)
           longPressTimer.value = null
+          console.log('取消长按计时器')
         }
         
         // 停止长按2倍速
         if (isLongPressing.value) {
           isLongPressing.value = false
           videoRef.value.playbackRate = originalPlaybackRate.value
+          console.log('停止长按2倍速')
         }
         
         // 开始进度条快进
         if (!isSeeking.value) {
           isSeeking.value = true
           showSeekBar.value = true
+          console.log('开始进度条快进')
         }
         
         // 计算快进量（每10像素对应1秒）
@@ -429,14 +626,33 @@ export default {
         seekAmount.value = seekSeconds
         seekCurrentTime.value = Math.max(0, Math.min(videoDuration.value, seekStartTime.value + seekSeconds))
         seekProgress.value = (seekCurrentTime.value / videoDuration.value) * 100
+        
+        console.log('进度条快进:', {
+          seekSeconds: seekSeconds,
+          currentTime: seekCurrentTime.value,
+          progress: seekProgress.value
+        })
       }
     }
     
     const handleTouchEnd = (event) => {
+      touchEndY.value = event.changedTouches[0].clientY
+      const swipeDistance = touchEndY.value - touchStartY.value
+      
+      console.log('=== 触摸结束 ===', {
+        endY: touchEndY.value,
+        startY: touchStartY.value,
+        swipeDistance: swipeDistance,
+        swipeThreshold: swipeThreshold,
+        isSeeking: isSeeking.value,
+        isLongPressing: isLongPressing.value
+      })
+      
       // 取消长按计时器
       if (longPressTimer.value) {
         clearTimeout(longPressTimer.value)
         longPressTimer.value = null
+        console.log('取消长按计时器')
       }
       
       // 恢复长按2倍速
@@ -445,10 +661,16 @@ export default {
         if (videoRef.value) {
           videoRef.value.playbackRate = originalPlaybackRate.value
         }
+        console.log('恢复长按2倍速')
       }
       
       // 处理进度条快进
       if (isSeeking.value && videoRef.value) {
+        console.log('应用进度条快进:', {
+          seekCurrentTime: seekCurrentTime.value,
+          seekAmount: seekAmount.value
+        })
+        
         // 应用快进
         videoRef.value.currentTime = seekCurrentTime.value
         showSeekBar.value = false
@@ -456,23 +678,27 @@ export default {
         
         // 如果视频暂停，播放视频
         if (videoRef.value.paused) {
+          console.log('视频暂停，重新播放')
           playVideo()
         }
       }
       
-      // 处理垂直滑动切换视频
-      touchEndY.value = event.changedTouches[0].clientY
-      const swipeDistance = touchEndY.value - touchStartY.value
-      
-      // 判断滑动方向和距离（只在没有进行进度条快进时）
+      // 处理垂直滑动切换视频（只在没有进行进度条快进时）
       if (!isSeeking.value && Math.abs(swipeDistance) > swipeThreshold) {
-        if (swipeDistance > 0) {
-          // 向下滑动，加载前一个视频
-          loadPrevVideo()
-        } else {
-          // 向上滑动，加载下一个视频
+        console.log('检测到垂直滑动，距离:', swipeDistance, '阈值:', swipeThreshold)
+        
+        // 修正滑动方向判断：向上滑动（手指向上移动）应该是负数，向下滑动（手指向下移动）应该是正数
+        if (swipeDistance < 0) {
+          // 向上滑动（手指向上移动），加载下一个视频
+          console.log('向上滑动，加载下一个视频')
           loadNextVideo()
+        } else {
+          // 向下滑动（手指向下移动），加载前一个视频
+          console.log('向下滑动，加载前一个视频')
+          loadPrevVideo()
         }
+      } else if (!isSeeking.value) {
+        console.log('滑动距离不足或正在进行进度条快进，不切换视频')
       }
     }
     
@@ -652,6 +878,11 @@ export default {
       isFavorited,
       isDisliked,
       showRefreshPrompt,
+      showSeekBar,
+      seekCurrentTime,
+      videoDuration,
+      seekProgress,
+      seekAmount,
       playVideo,
       pauseVideo,
       togglePlay,
@@ -665,7 +896,8 @@ export default {
       generateNewRandomList,
       close,
       removeFileExtension,
-      handleVideoEnded
+      handleVideoEnded,
+      formatTime
     }
   }
 }
