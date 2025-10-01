@@ -1,147 +1,159 @@
 <template>
   <transition name="modal">
-    <div 
-      v-if="visible" 
-      class="modal-player-container"
-      @touchstart="handleTouchStart"
-      @touchmove="handleTouchMove"
-      @touchend="handleTouchEnd"
-    >
-      <!-- 返回按钮 -->
-      <div class="back-button" @click="close">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M19 12H5"></path>
-          <path d="M12 19l-7-7 7-7"></path>
-        </svg>
-      </div>
+    <div v-if="visible" class="modal-player-container">
       
-      <!-- 视频播放区域 -->
-      <transition name="slide">
-        <div 
-          v-if="!isTransitioning" 
-          class="video-wrapper"
-          :key="currentVideo.id"
+      <!-- 使用Vant Swipe组件实现垂直滑动切换视频 -->
+      <van-swipe 
+        ref="swipeRef"
+        :vertical="true"
+        :loop="false" 
+        :touchable="true"
+        :initial-swipe="currentIndex"
+        :prevent="false"
+        :stop-propagation="false"
+        @change="onSwipeChange"
+        @touchstart="handleSwipeTouchStart"
+        @touchmove="handleSwipeTouchMove"
+        @touchend="handleSwipeTouchEnd"
+        @click="handleSwipeClick"
+        class="swipe-container"
+      >
+        <van-swipe-item 
+          v-for="(video, index) in playlistVideos" 
+          :key="video.id"
+          class="swipe-item"
         >
-          <video 
-            ref="videoRef"
-            :src="currentVideo.url"
-            class="video-element"
-            playsinline
-            webkit-playsinline
-            x5-playsinline
-            autoplay
-            @click="togglePlay"
-            @loadstart="handleVideoLoadStart"
-            @loadedmetadata="handleVideoLoadedMetadata"
-            @canplay="handleVideoCanPlay"
-            @ended="handleVideoEnded"
-          ></video>
-          
-          <!-- 视频信息 -->
-          <div class="video-info">
-            <div class="video-title">{{ currentVideo.filename ? removeFileExtension(currentVideo.filename) : '' }}</div>
-            <div class="video-counter" v-if="currentVideoIndex !== -1 && totalVideos > 0">
-              {{ currentVideoIndex + 1 }} / {{ totalVideos }}
+          <!-- 视频播放区域 - 只渲染当前播放的视频 -->
+          <div class="video-wrapper">
+            <video 
+              v-if="index === currentIndex"
+              :ref="el => videoRefs[index] = el"
+              :src="getVideoUrl(video)"
+              class="video-element"
+              playsinline
+              webkit-playsinline
+              x5-playsinline
+              autoplay
+              @loadstart="handleVideoLoadStart"
+              @loadedmetadata="handleVideoLoadedMetadata"
+              @canplay="handleVideoCanPlay"
+              @play="handleVideoPlay"
+              @pause="handleVideoPause"
+              @ended="handleVideoEnded"
+              @timeupdate="handleTimeUpdate"
+            ></video>
+            
+            <!-- 视频信息 -->
+            <div class="video-info">
+              <div class="video-title">{{ video.filename ? removeFileExtension(video.filename) : '' }}</div>
+              <div class="video-counter" v-if="currentIndex !== -1 && totalVideos > 0">
+                {{ index + 1 }} / {{ totalVideos }}
+              </div>
             </div>
-          </div>
-          
-          <!-- 加载指示器 -->
-          <div v-if="isLoading" class="loading-indicator">
-            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <path d="M12 6v6l4 2"></path>
-            </svg>
-          </div>
-          
-          <!-- 播放按钮 -->
-          <div v-if="!isPlaying && !isLoading" class="play-button" @click.stop="playVideo">
-            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="white">
-              <path d="M8 5v14l11-7z"/>
-            </svg>
-          </div>
-          
-          <!-- 关闭按钮 -->
-          <div class="close-button" @click="close">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 6L6 18"></path>
-              <path d="M6 6l12 12"></path>
-            </svg>
-          </div>
-          
-          <!-- 右侧操作栏 -->
-          <div class="right-action-bar">
-            <!-- 收藏按钮 -->
-            <div class="action-button" @click.stop="toggleFavorite">
-              <div class="action-icon">
-                <svg v-if="isFavorited" class="favorite-icon filled" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                </svg>
-                <svg v-else class="favorite-icon outline" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                </svg>
-            </div>
-          </div>
-          
-          <!-- 讨厌按钮 -->
-          <div class="action-button" @click.stop="toggleDislike">
-            <div class="action-icon">
-              <svg v-if="isDisliked" class="dislike-icon filled" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                <path d="M7 8L17 16" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                <path d="M17 8L7 16" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                <path d="M12 8L12 16" stroke="white" stroke-width="2" stroke-linecap="round"/>
-              </svg>
-              <svg v-else class="dislike-icon outline" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                <path d="M7 8L17 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                <path d="M17 8L7 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                <path d="M12 8L12 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            
+            <!-- 加载指示器 -->
+            <div v-if="isLoading && index === currentIndex" class="loading-indicator">
+              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 6v6l4 2"></path>
               </svg>
             </div>
-          </div>
-        </div>
-        
-          <!-- 快进进度条 -->
-          <div v-if="showSeekBar" class="seek-bar-overlay">
-            <div class="seek-bar-container">
-              <div class="seek-bar">
-                <div class="seek-progress" :style="{ width: seekProgress + '%' }"></div>
+            
+            <!-- 播放按钮 -->
+            <div v-if="!isPlaying && !isLoading && index === currentIndex" class="play-button" @click.stop="playVideo">
+              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="white">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            </div>
+            
+            <!-- 关闭按钮 -->
+            <div class="close-button" @click="close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 6L6 18"></path>
+                <path d="M6 6l12 12"></path>
+              </svg>
+            </div>
+            
+            <!-- 右侧操作栏 -->
+            <div class="right-action-bar">
+              <!-- 收藏按钮 -->
+              <div class="action-button" @click.stop="toggleFavorite">
+                <div class="action-icon">
+                  <svg v-if="isFavorited" class="favorite-icon filled" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                  </svg>
+                  <svg v-else class="favorite-icon outline" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                  </svg>
+                </div>
               </div>
-              <div class="seek-time">
-                <span>{{ formatTime(seekCurrentTime) }}</span>
-                <span class="seek-duration">{{ formatTime(videoDuration) }}</span>
-              </div>
-              <div class="seek-amount">
-                <span v-if="seekAmount > 0">+{{ seekAmount }}秒</span>
-                <span v-else-if="seekAmount < 0">{{ seekAmount }}秒</span>
+            
+              <!-- 讨厌按钮 -->
+              <div class="action-button" @click.stop="toggleDislike">
+                <div class="action-icon">
+                  <svg v-if="isDisliked" class="dislike-icon filled" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                    <path d="M7 8L17 16" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M17 8L7 16" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M12 8L12 16" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                  <svg v-else class="dislike-icon outline" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                    <path d="M7 8L17 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M17 8L7 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M12 8L12 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                </div>
               </div>
             </div>
-          </div>
+            
+            <!-- 快进进度条 -->
+            <div v-if="showSeekBar && index === currentIndex" class="seek-bar-overlay">
+              <div class="seek-bar-container">
+                <div class="seek-bar">
+                  <div class="seek-progress" :style="{ width: seekProgress + '%' }"></div>
+                </div>
+                <div class="seek-time">
+                  <span>{{ formatTime(seekCurrentTime) }}</span>
+                  <span class="seek-duration">{{ formatTime(videoDuration) }}</span>
+                </div>
+                <div class="seek-amount">
+                  <span v-if="seekAmount > 0">+{{ seekAmount }}秒</span>
+                  <span v-else-if="seekAmount < 0">{{ seekAmount }}秒</span>
+                </div>
+              </div>
+            </div>
 
-          <!-- 发现页面刷新提示 -->
-          <div v-if="playlistType === 'random' && showRefreshPrompt" class="refresh-prompt">
-            <div class="refresh-content">
-              <div class="refresh-text">已到达当前随机列表末尾</div>
-              <button class="refresh-button" @click.stop="generateNewRandomList">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M23 4v6h-6"></path>
-                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-                </svg>
-                生成新随机列表
-              </button>
+            <!-- 发现页面刷新提示 -->
+            <div v-if="playlistType === 'random' && showRefreshPrompt && index === currentIndex" class="refresh-prompt">
+              <div class="refresh-content">
+                <div class="refresh-text">已到达当前随机列表末尾</div>
+                <button class="refresh-button" @click.stop="generateNewRandomList">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M23 4v6h-6"></path>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                  </svg>
+                  生成新随机列表
+                </button>
+              </div>
             </div>
-            </div>
-        </div>
-      </transition>
+          </div>
+        </van-swipe-item>
+      </van-swipe>
     </div>
   </transition>
 </template>
 
 <script>
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, onMounted, toRefs } from 'vue'
+import { Swipe, SwipeItem } from 'vant'
 
 export default {
   name: 'ModalVideoPlayer',
+  components: {
+    [Swipe.name]: Swipe,
+    [SwipeItem.name]: SwipeItem
+  },
   props: {
     visible: {
       type: Boolean,
@@ -174,13 +186,14 @@ export default {
   },
   emits: ['close', 'video-change', 'list-refresh'],
   setup(props, { emit }) {
-    const videoRef = ref(null)
+    // 使用toRefs保持响应性
+    const { visible, video, playlistType, playlistSeed, playlistVideos, currentIndex, fromPage } = toRefs(props)
+    const videoRefs = ref([]) // 修复：添加videoRefs变量定义
+    const swipeRef = ref(null)
     const isPlaying = ref(false)
     const isLoading = ref(true)
-    const isTransitioning = ref(false)
-    const touchStartY = ref(0)
-    const touchEndY = ref(0)
     const touchStartX = ref(0)
+    const touchStartY = ref(0)
     const touchCurrentX = ref(0)
     const swipeThreshold = 100
     
@@ -199,12 +212,18 @@ export default {
     const isSeeking = ref(false)
     
     // 播放列表相关状态
-    const currentVideo = ref({})
-    const currentVideoIndex = ref(-1)
     const totalVideos = ref(0)
-    const playlistVideos = ref([])
-    const playlistType = ref('latest')
-    const playlistSeed = ref(null)
+    const isTransitioning = ref(false)
+    
+    // 获取当前视频的引用
+    const getCurrentVideoRef = () => {
+      if (currentIndex.value >= 0 && currentIndex.value < videoRefs.value.length) {
+        return videoRefs.value[currentIndex.value]
+      }
+      return null
+    }
+    
+    // 移除重复定义的响应式变量
     
     // 用户行为状态
     const isFavorited = ref(false)
@@ -218,23 +237,28 @@ export default {
         : `${window.location.protocol}//${window.location.hostname}:5003/api`
     }
     
+    // 获取视频URL
+    const getVideoUrl = (video) => {
+      return `${getBaseUrl()}/videos/file/${encodeURIComponent(video.filename)}`
+    }
+    
     // 初始化播放器
     const initPlayer = async () => {
-      if (!props.video || !props.video.id) return
+      if (!video.value || !video.value.id) return
       
-      currentVideo.value = { ...props.video }
-      currentVideoIndex.value = props.currentIndex
-      playlistVideos.value = [...props.playlistVideos]
-      playlistType.value = props.playlistType
-      playlistSeed.value = props.playlistSeed
-      totalVideos.value = props.playlistVideos.length
-      
-      // 设置视频URL - 使用正确的API路径
-      currentVideo.value.url = `${getBaseUrl()}/videos/file/${encodeURIComponent(currentVideo.value.filename)}`
+      totalVideos.value = playlistVideos.value.length
+      // 安全初始化videoRefs数组
+      if (!videoRefs.value) {
+        videoRefs.value = []
+      }
+      // 确保数组长度足够
+      if (videoRefs.value.length < playlistVideos.value.length) {
+        videoRefs.value.length = playlistVideos.value.length
+      }
       
       console.log('模态框播放器初始化:', {
-        video: currentVideo.value,
-        index: currentVideoIndex.value,
+        video: video.value,
+        index: currentIndex.value,
         total: totalVideos.value,
         playlistType: playlistType.value
       })
@@ -250,78 +274,42 @@ export default {
     
     // 播放视频
     const playVideo = async () => {
-      if (!videoRef.value) {
-        console.log('videoRef为null，无法播放')
-        return false
+      let videoRef = getCurrentVideoRef()
+      if (!videoRef) {
+        console.log('videoRef为null，等待视频元素创建...')
+        // 等待一段时间后重试
+        await new Promise(resolve => setTimeout(resolve, 100))
+        videoRef = getCurrentVideoRef()
+        if (!videoRef) {
+          console.log('videoRef仍然为null，无法播放')
+          return false
+        }
       }
       
-      console.log('开始播放视频，当前视频状态:', {
-        paused: videoRef.value.paused,
-        readyState: videoRef.value.readyState,
-        currentTime: videoRef.value.currentTime,
-        ended: videoRef.value.ended,
-        muted: videoRef.value.muted
-      })
+      console.log('开始播放视频')
       
       try {
-        const playPromise = videoRef.value.play()
+        const playPromise = videoRef.play()
         
         // 处理播放Promise
         await playPromise.catch(async (error) => {
           console.log('第一次播放失败，尝试延迟播放:', error)
           // 延迟后重试播放
           await new Promise(resolve => setTimeout(resolve, 500))
-          if (videoRef.value) {
-            return videoRef.value.play()
+          const retryVideoRef = getCurrentVideoRef()
+          if (retryVideoRef) {
+            return retryVideoRef.play()
           }
           throw error
         })
         
-        console.log('播放命令已发送，等待播放状态确认...')
+        console.log('播放命令已发送，立即更新播放状态...')
         
-        // 添加播放状态验证
-        const playSuccess = await new Promise((resolve) => {
-          let attempts = 0
-          const maxAttempts = 15
-          
-          const checkPlayState = () => {
-            if (!videoRef.value) {
-              console.log('videoRef为null，停止播放状态检查')
-              resolve(false)
-              return
-            }
-            
-            attempts++
-            console.log(`播放状态检查第${attempts}次:`, {
-              paused: videoRef.value.paused,
-              readyState: videoRef.value.readyState,
-              currentTime: videoRef.value.currentTime
-            })
-            
-            // 只要视频不在暂停状态就认为播放成功
-            if (!videoRef.value.paused) {
-              console.log('视频确认开始播放')
-              isPlaying.value = true
-              resolve(true)
-            } else if (attempts >= maxAttempts) {
-              console.log('播放状态检查超时，视频可能被浏览器阻止')
-              // 即使超时也返回false而不是reject，避免阻塞流程
-              resolve(false)
-            } else {
-              setTimeout(checkPlayState, 200)
-            }
-          }
-          checkPlayState()
-        })
+        // 简化播放状态管理：直接设置播放状态为true
+        isPlaying.value = true
+        console.log('播放状态已设置为true')
         
-        if (playSuccess) {
-          console.log('视频播放成功，当前播放状态:', isPlaying.value)
-        } else {
-          console.log('视频播放可能被浏览器阻止')
-          isPlaying.value = false
-        }
-        
-        return playSuccess
+        return true
       } catch (error) {
         console.error('视频播放失败:', error)
         isPlaying.value = false
@@ -331,8 +319,12 @@ export default {
     
     // 暂停视频
     const pauseVideo = () => {
-      if (!videoRef.value) return
-      videoRef.value.pause()
+      const videoRef = getCurrentVideoRef()
+      if (!videoRef) {
+        console.log('videoRef为null，无法暂停')
+        return
+      }
+      videoRef.pause()
       isPlaying.value = false
     }
     
@@ -345,261 +337,142 @@ export default {
       }
     }
     
+    // Swipe切换事件处理
+    const onSwipeChange = (index) => {
+      console.log('=== Swipe切换事件 ===', {
+        fromIndex: currentIndex.value,
+        toIndex: index,
+        totalVideos: playlistVideos.value.length
+      })
+      
+      if (index === currentIndex.value) return
+      
+      // 通知父组件视频切换
+      emit('video-change', {
+        video: playlistVideos.value[index],
+        index: index
+      })
+      
+      // 播放新视频
+      playVideo()
+      
+      // 检查新视频的用户行为状态
+      checkFavoriteStatus()
+      checkDislikeStatus()
+    }
+
     // 视频加载开始
     const handleVideoLoadStart = () => {
       console.log('=== 视频加载开始 ===')
-      console.log('视频元素尺寸:', {
-        width: videoRef.value?.offsetWidth,
-        height: videoRef.value?.offsetHeight,
-        clientWidth: videoRef.value?.clientWidth,
-        clientHeight: videoRef.value?.clientHeight,
-        videoWidth: videoRef.value?.videoWidth,
-        videoHeight: videoRef.value?.videoHeight
-      })
       isLoading.value = true
     }
 
     // 视频元数据加载完成
     const handleVideoLoadedMetadata = () => {
       console.log('=== 视频元数据加载完成 ===')
-      console.log('视频原始尺寸:', {
-        videoWidth: videoRef.value?.videoWidth,
-        videoHeight: videoRef.value?.videoHeight,
-        duration: videoRef.value?.duration
-      })
-      console.log('视频元素当前尺寸:', {
-        offsetWidth: videoRef.value?.offsetWidth,
-        offsetHeight: videoRef.value?.offsetHeight,
-        clientWidth: videoRef.value?.clientWidth,
-        clientHeight: videoRef.value?.clientHeight
-      })
     }
 
     // 视频可以播放
     const handleVideoCanPlay = () => {
       console.log('=== 视频可以播放 ===')
-      console.log('视频元素最终尺寸:', {
-        offsetWidth: videoRef.value?.offsetWidth,
-        offsetHeight: videoRef.value?.offsetHeight,
-        clientWidth: videoRef.value?.clientWidth,
-        clientHeight: videoRef.value?.clientHeight,
-        videoWidth: videoRef.value?.videoWidth,
-        videoHeight: videoRef.value?.videoHeight
-      })
       isLoading.value = false
+    }
+
+    // 视频播放进度更新
+    const handleTimeUpdate = () => {
+      const videoRef = getCurrentVideoRef()
+      // 确保加载状态正确更新
+      if (videoRef && videoRef.readyState >= 3) {
+        isLoading.value = false
+      }
+      
+      // 实时更新播放状态
+      if (videoRef) {
+        isPlaying.value = !videoRef.paused
+      }
+    }
+
+    // 视频播放开始
+    const handleVideoPlay = () => {
+      console.log('=== 视频开始播放 ===')
+      isPlaying.value = true
+    }
+
+    // 视频暂停
+    const handleVideoPause = () => {
+      console.log('=== 视频暂停 ===')
+      isPlaying.value = false
     }
 
     // 视频结束处理
     const handleVideoEnded = () => {
       console.log('=== 视频播放完成，自动切换到下一个视频 ===')
-      console.log('视频结束时间:', videoRef.value?.currentTime, '视频总时长:', videoRef.value?.duration)
       isPlaying.value = false
-      loadNextVideo()
-    }
-    
-    // 加载下一个视频
-    const loadNextVideo = () => {
-      if (isTransitioning.value) {
-        console.log('正在切换中，跳过重复切换')
-        return
-      }
       
-      const nextIndex = currentVideoIndex.value + 1
-      console.log('=== 加载下一个视频 ===', {
-        currentIndex: currentVideoIndex.value,
-        nextIndex: nextIndex,
-        playlistLength: playlistVideos.value.length,
-        isTransitioning: isTransitioning.value,
-        source: '视频播放完成或向上滑动'
-      })
-      
-      if (nextIndex < playlistVideos.value.length) {
-        switchVideo(nextIndex)
-      } else {
-        console.log('已到达播放列表末尾，无法继续切换')
-        // 边界处理
-        if (playlistType.value === 'random' && nextIndex === 200) {
-          showRefreshPrompt.value = true
-          setTimeout(() => {
-            showRefreshPrompt.value = false
-          }, 3000)
+      // 如果还有下一个视频，自动切换
+      if (currentIndex.value < playlistVideos.value.length - 1) {
+        // 使用Swipe组件切换到下一个视频
+        if (swipeRef.value) {
+          swipeRef.value.next()
         }
       }
     }
     
-    // 加载上一个视频
-    const loadPrevVideo = () => {
-      if (isTransitioning.value) {
-        console.log('正在切换中，跳过重复切换')
-        return
-      }
-      
-      const prevIndex = currentVideoIndex.value - 1
-      console.log('=== 加载上一个视频 ===', {
-        currentIndex: currentVideoIndex.value,
-        prevIndex: prevIndex,
-        isTransitioning: isTransitioning.value,
-        source: '向下滑动'
-      })
-      
-      if (prevIndex >= 0) {
-        switchVideo(prevIndex)
-      } else {
-        console.log('已到达播放列表开头，无法继续切换')
-      }
-    }
+
     
-    // 切换视频
-    const switchVideo = async (newIndex) => {
-      if (newIndex < 0 || newIndex >= playlistVideos.value.length) {
-        console.warn('无效的视频索引:', newIndex)
-        return
-      }
-      
-      isTransitioning.value = true
-      currentVideoIndex.value = newIndex
-      currentVideo.value = { ...playlistVideos.value[newIndex] }
-      currentVideo.value.url = `${getBaseUrl()}/videos/file/${encodeURIComponent(currentVideo.value.filename)}`
-      
-      console.log('=== 切换视频 ===', {
-        from: props.currentIndex,
-        to: newIndex,
-        video: currentVideo.value,
-        isTransitioning: isTransitioning.value
-      })
-      
-      // 通知父组件视频切换
-      emit('video-change', {
-        video: currentVideo.value,
-        index: newIndex
-      })
-      
-      // 检查新视频的用户行为状态
-      await checkFavoriteStatus()
-      await checkDislikeStatus()
-      
-      // 立即设置视频源并尝试播放
-      await nextTick()
-      if (videoRef.value) {
-        console.log('设置新视频源:', currentVideo.value.url)
-        videoRef.value.src = currentVideo.value.url
-        videoRef.value.load() // 强制加载新源
-        videoRef.value.preload = 'auto' // 预加载
-        
-        // 检查视频的readyState
-        console.log('视频加载状态:', {
-          readyState: videoRef.value.readyState,
-          HAVE_NOTHING: videoRef.value.HAVE_NOTHING,
-          HAVE_METADATA: videoRef.value.HAVE_METADATA,
-          HAVE_CURRENT_DATA: videoRef.value.HAVE_CURRENT_DATA,
-          HAVE_FUTURE_DATA: videoRef.value.HAVE_FUTURE_DATA,
-          HAVE_ENOUGH_DATA: videoRef.value.HAVE_ENOUGH_DATA
-        })
-      }
-      
-      // 等待视频加载完成后再尝试播放
-      const waitForVideoReady = () => {
-        return new Promise((resolve) => {
-          if (!videoRef.value) {
-            console.log('videoRef为null，跳过等待')
-            resolve()
-            return
-          }
-          
-          if (videoRef.value.readyState >= videoRef.value.HAVE_ENOUGH_DATA) {
-            console.log('视频已准备好，立即播放')
-            resolve()
-            return
-          }
-          
-          console.log('等待视频加载完成...')
-          const onCanPlay = () => {
-            console.log('视频canplay事件触发，开始播放')
-            if (videoRef.value) {
-              videoRef.value.removeEventListener('canplay', onCanPlay)
-            }
-            resolve()
-          }
-          
-          if (videoRef.value) {
-            videoRef.value.addEventListener('canplay', onCanPlay)
-          }
-          
-          // 超时保护
-          setTimeout(() => {
-            console.log('视频加载超时，强制尝试播放')
-            if (videoRef.value) {
-              videoRef.value.removeEventListener('canplay', onCanPlay)
-            }
-            resolve()
-          }, 3000)
-        })
-      }
-      
-      try {
-        await waitForVideoReady()
-        const playSuccess = await playVideo()
-        
-        if (playSuccess) {
-          console.log('切换视频后播放成功，重置isTransitioning状态')
-          isTransitioning.value = false
-        } else {
-          console.log('播放失败，但重置isTransitioning状态避免阻塞')
-          isTransitioning.value = false
-        }
-      } catch (error) {
-        console.log('切换视频播放失败:', error)
-        isTransitioning.value = false
-      }
-    }
-    
-    // 触摸事件处理
-    const handleTouchStart = (event) => {
-      touchStartY.value = event.touches[0].clientY
+    // Swipe组件触摸事件处理 - 垂直滑动切换视频，水平滑动快进快退
+    const handleSwipeTouchStart = (event) => {
+      // 记录触摸起始位置
       touchStartX.value = event.touches[0].clientX
-      touchCurrentX.value = touchStartX.value
+      touchStartY.value = event.touches[0].clientY
       
-      console.log('=== 触摸开始 ===', {
-        startY: touchStartY.value,
-        startX: touchStartX.value
+      console.log('=== Swipe触摸开始 ===', {
+        startX: touchStartX.value,
+        startY: touchStartY.value
       })
       
       // 开始长按计时器（2倍速播放）
       longPressTimer.value = setTimeout(() => {
-        if (videoRef.value && !isLongPressing.value) {
+        const videoRef = getCurrentVideoRef()
+        if (videoRef && !isLongPressing.value) {
           isLongPressing.value = true
-          originalPlaybackRate.value = videoRef.value.playbackRate
-          videoRef.value.playbackRate = 2.0 // 2倍速播放
+          originalPlaybackRate.value = videoRef.playbackRate
+          videoRef.playbackRate = 2.0 // 2倍速播放
           console.log('长按2倍速播放激活')
         }
       }, 500) // 长按500ms触发
       
       // 初始化进度条快进状态
-      if (videoRef.value) {
-        seekStartTime.value = videoRef.value.currentTime
+      const videoRef = getCurrentVideoRef()
+      if (videoRef) {
+        seekStartTime.value = videoRef.currentTime
         seekCurrentTime.value = seekStartTime.value
-        videoDuration.value = videoRef.value.duration || 0
+        videoDuration.value = videoRef.duration || 0
         isSeeking.value = false
       }
     }
     
-    const handleTouchMove = (event) => {
+    const handleSwipeTouchMove = (event) => {
       if (!event.touches.length) return
       
-      touchCurrentX.value = event.touches[0].clientX
-      const deltaX = touchCurrentX.value - touchStartX.value
-      const deltaY = event.touches[0].clientY - touchStartY.value
+      const touchCurrentX = event.touches[0].clientX
+      const touchCurrentY = event.touches[0].clientY
+      const deltaX = touchCurrentX - touchStartX.value
+      const deltaY = touchCurrentY - touchStartY.value
       
-      console.log('=== 触摸移动 ===', {
-        currentX: touchCurrentX.value,
-        currentY: event.touches[0].clientY,
+      console.log('=== Swipe触摸移动 ===', {
+        currentX: touchCurrentX,
+        currentY: touchCurrentY,
         deltaX: deltaX,
         deltaY: deltaY,
         isSeeking: isSeeking.value
       })
       
-      // 水平滑动超过阈值，开始进度条快进
-      if (Math.abs(deltaX) > 20 && videoRef.value) {
+      // 只处理水平滑动（快进快退），垂直滑动由Swipe组件处理
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 20) {
+        const videoRef = getCurrentVideoRef()
+        if (!videoRef) return
+        
         // 取消长按计时器
         if (longPressTimer.value) {
           clearTimeout(longPressTimer.value)
@@ -610,7 +483,7 @@ export default {
         // 停止长按2倍速
         if (isLongPressing.value) {
           isLongPressing.value = false
-          videoRef.value.playbackRate = originalPlaybackRate.value
+          videoRef.playbackRate = originalPlaybackRate.value
           console.log('停止长按2倍速')
         }
         
@@ -635,15 +508,8 @@ export default {
       }
     }
     
-    const handleTouchEnd = (event) => {
-      touchEndY.value = event.changedTouches[0].clientY
-      const swipeDistance = touchEndY.value - touchStartY.value
-      
-      console.log('=== 触摸结束 ===', {
-        endY: touchEndY.value,
-        startY: touchStartY.value,
-        swipeDistance: swipeDistance,
-        swipeThreshold: swipeThreshold,
+    const handleSwipeTouchEnd = (event) => {
+      console.log('=== Swipe触摸结束 ===', {
         isSeeking: isSeeking.value,
         isLongPressing: isLongPressing.value
       })
@@ -658,49 +524,46 @@ export default {
       // 恢复长按2倍速
       if (isLongPressing.value) {
         isLongPressing.value = false
-        if (videoRef.value) {
-          videoRef.value.playbackRate = originalPlaybackRate.value
+        const videoRef = getCurrentVideoRef()
+        if (videoRef) {
+          videoRef.playbackRate = originalPlaybackRate.value
         }
         console.log('恢复长按2倍速')
       }
       
       // 处理进度条快进
-      if (isSeeking.value && videoRef.value) {
-        console.log('应用进度条快进:', {
-          seekCurrentTime: seekCurrentTime.value,
-          seekAmount: seekAmount.value
-        })
-        
-        // 应用快进
-        videoRef.value.currentTime = seekCurrentTime.value
-        showSeekBar.value = false
-        isSeeking.value = false
-        
-        // 如果视频暂停，播放视频
-        if (videoRef.value.paused) {
-          console.log('视频暂停，重新播放')
-          playVideo()
+      if (isSeeking.value) {
+        const videoRef = getCurrentVideoRef()
+        if (videoRef) {
+          console.log('应用进度条快进:', {
+            seekCurrentTime: seekCurrentTime.value,
+            seekAmount: seekAmount.value
+          })
+          
+          // 应用快进
+          videoRef.currentTime = seekCurrentTime.value
+          showSeekBar.value = false
+          isSeeking.value = false
+          
+          // 如果视频暂停，播放视频
+          if (videoRef.paused) {
+            console.log('视频暂停，重新播放')
+            playVideo()
+          }
         }
-      }
-      
-      // 处理垂直滑动切换视频（只在没有进行进度条快进时）
-      if (!isSeeking.value && Math.abs(swipeDistance) > swipeThreshold) {
-        console.log('检测到垂直滑动，距离:', swipeDistance, '阈值:', swipeThreshold)
-        
-        // 修正滑动方向判断：向上滑动（手指向上移动）应该是负数，向下滑动（手指向下移动）应该是正数
-        if (swipeDistance < 0) {
-          // 向上滑动（手指向上移动），加载下一个视频
-          console.log('向上滑动，加载下一个视频')
-          loadNextVideo()
-        } else {
-          // 向下滑动（手指向下移动），加载前一个视频
-          console.log('向下滑动，加载前一个视频')
-          loadPrevVideo()
-        }
-      } else if (!isSeeking.value) {
-        console.log('滑动距离不足或正在进行进度条快进，不切换视频')
       }
     }
+    
+    const handleSwipeClick = (event) => {
+      // 阻止事件冒泡
+      event.stopPropagation()
+      console.log('=== Swipe点击事件 ===')
+      
+      // 切换播放状态
+      togglePlay()
+    }
+    
+
     
     // 检查收藏状态
     const checkFavoriteStatus = async () => {
@@ -708,7 +571,10 @@ export default {
       if (!savedUser) return
       
       const user = JSON.parse(savedUser)
-      const videoId = currentVideo.value.id
+      const video = playlistVideos.value[currentIndex.value]
+      if (!video) return
+      
+      const videoId = video.id
       
       try {
         const res = await fetch(`${getBaseUrl()}/favorites/check?user_id=${user.id}&video_id=${videoId}`)
@@ -727,7 +593,10 @@ export default {
       if (!savedUser) return
       
       const user = JSON.parse(savedUser)
-      const videoId = currentVideo.value.id
+      const video = playlistVideos.value[currentIndex.value]
+      if (!video) return
+      
+      const videoId = video.id
       
       try {
         const res = await fetch(`${getBaseUrl()}/dislikes/check?user_id=${user.id}&video_id=${videoId}`)
@@ -749,7 +618,10 @@ export default {
       }
       
       const user = JSON.parse(savedUser)
-      const videoId = currentVideo.value.id
+      const video = playlistVideos.value[currentIndex.value]
+      if (!video) return
+      
+      const videoId = video.id
       
       try {
         if (isFavorited.value) {
@@ -781,7 +653,10 @@ export default {
       }
       
       const user = JSON.parse(savedUser)
-      const videoId = currentVideo.value.id
+      const video = playlistVideos.value[currentIndex.value]
+      if (!video) return
+      
+      const videoId = video.id
       
       try {
         if (isDisliked.value) {
@@ -831,18 +706,16 @@ export default {
     }
     
     // 监听visible变化
-    watch(() => props.visible, (newVal) => {
+    watch(() => visible.value, (newVal) => {
       if (newVal) {
         initPlayer()
       }
     })
     
     // 监听视频变化
-    watch(() => props.video, (newVideo) => {
-      if (newVideo && props.visible) {
-        currentVideo.value = { ...newVideo }
-        currentVideo.value.url = `${getBaseUrl()}/videos/file/${encodeURIComponent(newVideo.filename)}`
-        console.log('视频变化监听:', currentVideo.value)
+    watch(() => video.value, (newVideo) => {
+      if (newVideo && visible.value) {
+        console.log('视频变化监听:', newVideo)
         checkFavoriteStatus()
         checkDislikeStatus()
         playVideo()
@@ -850,31 +723,68 @@ export default {
     })
     
     // 监听播放列表变化
-    watch(() => props.playlistVideos, (newVideos) => {
-      if (newVideos && props.visible) {
-        playlistVideos.value = [...newVideos]
+    watch(() => playlistVideos.value, (newVideos) => {
+      if (newVideos && visible.value) {
         totalVideos.value = newVideos.length
-        console.log('播放列表变化，总视频数:', totalVideos.value)
+        // 安全初始化videoRefs数组
+        if (!videoRefs.value) {
+          videoRefs.value = []
+        }
+        // 确保数组长度足够
+        if (videoRefs.value.length < newVideos.length) {
+          videoRefs.value.length = newVideos.length
+        }
+        console.log('播放列表变化，总视频数:', totalVideos.value, 'videoRefs长度:', videoRefs.value.length)
       }
     })
     
     // 监听当前索引变化
-    watch(() => props.currentIndex, (newIndex) => {
-      if (newIndex !== -1 && props.visible) {
-        currentVideoIndex.value = newIndex
+    watch(() => currentIndex.value, (newIndex) => {
+      if (newIndex !== -1 && visible.value) {
         console.log('当前索引变化:', newIndex)
       }
     })
     
+    // 监听模态框显示状态变化和播放列表数据变化
+    watch([() => visible.value, () => playlistVideos.value], ([newVisible, newVideos], [oldVisible, oldVideos]) => {
+      console.log('模态框和播放列表变化监听:', {
+        visible: newVisible,
+        playlistLength: newVideos ? newVideos.length : 0,
+        oldVisible: oldVisible,
+        oldPlaylistLength: oldVideos ? oldVideos.length : 0
+      })
+      
+      if (newVisible && newVideos && newVideos.length > 0) {
+        console.log('模态框已显示且播放列表数据就绪，初始化播放器')
+        // 使用nextTick确保DOM已渲染
+        nextTick(() => {
+          initPlayer()
+        })
+      }
+    }, { immediate: true })
+    
+    // 额外的数据就绪检查：组件创建后立即检查
+    onMounted(() => {
+      console.log('ModalVideoPlayer组件已挂载，检查数据状态:', {
+        visible: visible.value,
+        playlistLength: playlistVideos.value ? playlistVideos.value.length : 0,
+        currentIndex: currentIndex.value
+      })
+      
+      if (visible.value && playlistVideos.value && playlistVideos.value.length > 0) {
+        console.log('组件挂载时数据已就绪，初始化播放器')
+        nextTick(() => {
+          initPlayer()
+        })
+      }
+    })
+    
     return {
-      videoRef,
+      videoRefs,
+      swipeRef,
       isPlaying,
       isLoading,
-      isTransitioning,
-      currentVideo,
-      currentVideoIndex,
       totalVideos,
-      playlistType,
       isFavorited,
       isDisliked,
       showRefreshPrompt,
@@ -883,21 +793,29 @@ export default {
       videoDuration,
       seekProgress,
       seekAmount,
+      isTransitioning,
       playVideo,
       pauseVideo,
       togglePlay,
-      handleTouchStart,
-      handleTouchMove,
-      handleTouchEnd,
-      loadNextVideo,
-      loadPrevVideo,
+      handleSwipeTouchStart,
+      handleSwipeTouchMove,
+      handleSwipeTouchEnd,
+      handleSwipeClick,
+      onSwipeChange,
       toggleFavorite,
       toggleDislike,
       generateNewRandomList,
       close,
       removeFileExtension,
+      getVideoUrl,
       handleVideoEnded,
-      formatTime
+      formatTime,
+      handleVideoLoadStart,
+      handleVideoLoadedMetadata,
+      handleVideoCanPlay,
+      handleVideoPlay,
+      handleVideoPause,
+      handleTimeUpdate
     }
   }
 }
@@ -912,6 +830,16 @@ export default {
   height: 100vh;
   background: #000;
   z-index: 10000;
+}
+
+.swipe-container {
+  width: 100%;
+  height: 100%;
+}
+
+.swipe-item {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -927,6 +855,19 @@ export default {
   opacity: 0;
 }
 
+.swipe-container {
+  width: 100%;
+  height: 100%;
+}
+
+.swipe-item {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .video-wrapper {
   position: relative;
   width: 100%;
@@ -934,6 +875,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 
 .video-element {
@@ -1101,19 +1043,7 @@ export default {
   cursor: pointer;
 }
 
-/* 滑动动画 */
-.slide-enter-active,
-.slide-leave-active {
-  transition: transform 0.5s ease;
-}
 
-.slide-enter-from {
-  transform: translateY(var(--slide-direction, 100%));
-}
-
-.slide-leave-to {
-  transform: translateY(calc(var(--slide-direction, 100%) * -1));
-}
 
 /* 进度条快进样式 */
 .seek-bar-overlay {
