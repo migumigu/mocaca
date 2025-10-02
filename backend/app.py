@@ -854,17 +854,35 @@ def admin_refresh_files():
         scanned_dirs = []
         file_system_files = set()
         
-        # 递归扫描所有子目录
+        # 递归扫描所有子目录，过滤隐藏文件和目录
         for root, dirs, files in os.walk(media_dir):
+            # 过滤隐藏目录（以.开头的目录）
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            
+            # 检查当前目录是否为隐藏目录（路径中包含/.的目录）
+            if any(part.startswith('.') for part in root.split(os.sep)):
+                print(f"⏭️ 跳过隐藏目录: {root}")
+                continue
+                
             scanned_dirs.append(root)
             print(f"🔍 扫描目录: {root}")
             print(f"   - 子目录: {dirs}")
             print(f"   - 文件数: {len(files)}")
             
             for file in files:
+                # 跳过隐藏文件（以.开头的文件）
+                if file.startswith('.'):
+                    print(f"⏭️ 跳过隐藏文件: {file}")
+                    continue
+                    
                 if file.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
                     file_path = os.path.join(root, file)
                     relative_path = os.path.relpath(file_path, media_dir)
+                    
+                    # 检查相对路径是否包含隐藏目录
+                    if any(part.startswith('.') for part in relative_path.split(os.sep)):
+                        print(f"⏭️ 跳过隐藏路径中的文件: {relative_path}")
+                        continue
                     
                     print(f"   ✅ 找到视频文件: {file}")
                     print(f"     完整路径: {file_path}")
