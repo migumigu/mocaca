@@ -111,14 +111,19 @@ def is_portrait_video(filepath):
         result = subprocess.run(cmd, capture_output=True, text=True)
         info = json.loads(result.stdout)
         
+        # 检查是否有视频流
+        if not info.get('streams') or len(info['streams']) == 0:
+            print(f"获取视频尺寸失败: 文件没有视频流 - {filepath}")
+            return False
+            
         width = info['streams'][0]['width']
         height = info['streams'][0]['height']
         return height > width  # 高度大于宽度即为纵向视频
         
     except Exception as e:
         print(f"获取视频尺寸失败: {e}")
-        # 如果ffprobe不可用或视频无法读取，默认接受该视频
-        return True
+        # 如果ffprobe不可用或视频无法读取，跳过该文件
+        return False
 
 def scan_media_folder():
     """递归扫描媒体文件夹及其子目录并更新数据库"""
@@ -127,11 +132,23 @@ def scan_media_folder():
     
     # 递归扫描所有子目录
     for root, dirs, files in os.walk(app.config['MEDIA_FOLDER']):
+        # 过滤隐藏目录
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
+        
         for filename in files:
-            if filename.endswith('.mp4'):
+            # 跳过隐藏文件
+            if filename.startswith('.'):
+                continue
+                
+            if filename.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
                 filepath = os.path.join(root, filename)
                 # 只处理相对路径，保持文件名唯一性
                 rel_path = os.path.relpath(filepath, app.config['MEDIA_FOLDER'])
+                
+                # 检查相对路径是否包含隐藏目录
+                if any(part.startswith('.') for part in rel_path.split(os.sep)):
+                    continue
+                    
                 if rel_path not in existing_files and is_portrait_video(filepath):
                     video = Video(filename=rel_path, filepath=filepath)
                     db.session.add(video)
