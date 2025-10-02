@@ -278,12 +278,18 @@ export default {
       if (!videoRef) {
         console.log('videoRef为null，等待视频元素创建...')
         // 等待一段时间后重试
-        await new Promise(resolve => setTimeout(resolve, 100))
+        await new Promise(resolve => setTimeout(resolve, 200))
         videoRef = getCurrentVideoRef()
         if (!videoRef) {
           console.log('videoRef仍然为null，无法播放')
           return false
         }
+      }
+      
+      // 确保模态框仍然可见
+      if (!visible.value) {
+        console.log('模态框已关闭，取消播放')
+        return false
       }
       
       console.log('开始播放视频')
@@ -559,6 +565,17 @@ export default {
       event.stopPropagation()
       console.log('=== Swipe点击事件 ===')
       
+      // 确保视频元素已正确创建
+      const videoRef = getCurrentVideoRef()
+      if (!videoRef) {
+        console.log('视频元素未就绪，延迟处理点击事件')
+        // 延迟处理，等待视频元素创建
+        setTimeout(() => {
+          togglePlay()
+        }, 100)
+        return
+      }
+      
       // 切换播放状态
       togglePlay()
     }
@@ -686,8 +703,11 @@ export default {
     
     // 关闭模态框
     const close = () => {
-      pauseVideo()
-      emit('close')
+      // 延迟关闭，确保播放流程完成
+      setTimeout(() => {
+        pauseVideo()
+        emit('close')
+      }, 100)
     }
     
     // 去除文件扩展名

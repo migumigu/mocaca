@@ -2,6 +2,7 @@ from flask import Flask, jsonify, send_from_directory, request
 from werkzeug.utils import secure_filename
 import os
 import random
+import threading
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
@@ -145,8 +146,8 @@ def scan_media_folder():
                 # 只处理相对路径，保持文件名唯一性
                 rel_path = os.path.relpath(filepath, app.config['MEDIA_FOLDER'])
                 
-                # 检查相对路径是否包含隐藏目录
-                if any(part.startswith('.') for part in rel_path.split(os.sep)):
+                # 检查相对路径是否包含隐藏目录（只检查目录名，不检查路径分隔符）
+                if any(part.startswith('.') for part in rel_path.split(os.sep) if part):
                     continue
                     
                 if rel_path not in existing_files and is_portrait_video(filepath):
@@ -838,7 +839,156 @@ def admin_generate_thumbnails():
         print(f"🔍 详细错误信息: {traceback.format_exc()}")
         return jsonify({'error': f'批量生成缩略图失败: {str(e)}'}), 500
 
-# 管理员API - 刷新文件列表
+# 后台任务状态跟踪
+refresh_task_status = {
+    'running': False,
+    'progress': 0,
+    'message': '',
+    'error': None
+}
+
+def async_refresh_files():
+    """异步刷新文件列表的后台任务"""
+    global refresh_task_status
+    
+    # 在应用上下文中执行数据库操作
+    with app.app_context():
+        try:
+            refresh_task_status = {
+                'running': True,
+                'progress': 0,
+                'message': '开始扫描媒体目录...',
+                'error': None
+            }
+            
+            # 获取媒体目录路径
+            media_dir = app.config['MEDIA_FOLDER']
+            print(f"🎯 开始智能扫描媒体目录: {media_dir}")
+            
+            # 获取当前数据库中的所有视频记录
+            existing_videos = Video.query.all()
+            existing_filepaths = {v.filepath: v for v in existing_videos}
+            existing_filenames = {v.filename: v for v in existing_videos}
+        
+            print(f"🗃️ 当前数据库中的视频记录数: {len(existing_videos)}")
+            
+            # 扫描文件系统中的视频文件
+            video_files = []
+            scanned_dirs = []
+            file_system_files = set()
+            
+            refresh_task_status['progress'] = 10
+            refresh_task_status['message'] = '正在扫描文件系统...'
+            
+            # 递归扫描所有子目录，过滤隐藏文件和目录
+            for root, dirs, files in os.walk(media_dir):
+                # 过滤隐藏目录（以.开头的目录）
+                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                
+                # 检查当前目录是否为隐藏目录（只检查目录名，不检查路径分隔符）
+                # 正确的隐藏目录判断：只检查目录名是否以.开头
+                current_dir = os.path.basename(root)
+                if current_dir.startswith('.'):
+                    print(f"⏭️ 跳过隐藏目录: {root}")
+                    continue
+                    
+                scanned_dirs.append(root)
+                print(f"🔍 扫描目录: {root}")
+                
+                for file in files:
+                    # 跳过隐藏文件（以.开头的文件）
+                    if file.startswith('.'):
+                        continue
+                        
+                    if file.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
+                        file_path = os.path.join(root, file)
+                        relative_path = os.path.relpath(file_path, media_dir)
+                        
+                        # 检查相对路径是否包含隐藏目录（只检查目录名，不检查路径分隔符）
+                        if any(part.startswith('.') for part in relative_path.split(os.sep) if part):
+                            continue
+                        
+                        video_files.append({
+                            'filename': file,
+                            'filepath': relative_path,
+                            'full_path': file_path
+                        })
+                        file_system_files.add(relative_path)
+            
+            refresh_task_status['progress'] = 50
+            refresh_task_status['message'] = f'扫描完成，找到 {len(video_files)} 个视频文件，正在更新数据库...'
+            
+            print(f"📊 扫描完成统计:")
+            print(f"   - 扫描目录总数: {len(scanned_dirs)}")
+            print(f"   - 找到视频文件数: {len(video_files)}")
+            
+            # 智能更新数据库
+            added_count = 0
+            removed_count = 0
+            unchanged_count = 0
+            
+            # 修复路径匹配：将数据库中的完整路径转换为相对路径进行比较
+            existing_relative_paths = {}
+            for filepath, video in existing_filepaths.items():
+                try:
+                    relative_path = os.path.relpath(filepath, media_dir)
+                    existing_relative_paths[relative_path] = video
+                except ValueError:
+                    # 如果路径转换失败，可能是跨磁盘路径，直接使用文件名
+                    existing_relative_paths[video.filename] = video
+            
+            # 1. 删除数据库中不存在对应文件的记录
+            for relative_path, video in existing_relative_paths.items():
+                if relative_path not in file_system_files:
+                    print(f"🗑️ 删除数据库中不存在的文件记录: {relative_path}")
+                    db.session.delete(video)
+                    removed_count += 1
+            
+            refresh_task_status['progress'] = 70
+            refresh_task_status['message'] = '正在添加新增文件...'
+            
+            # 2. 添加新增的文件到数据库
+            for video_data in video_files:
+                if video_data['filepath'] not in existing_relative_paths:
+                    # 检查是否为纵向视频
+                    if is_portrait_video(video_data['full_path']):
+                        video = Video(
+                            filename=video_data['filepath'],
+                            filepath=video_data['full_path']
+                        )
+                        db.session.add(video)
+                        print(f"💾 添加新增视频到数据库: {video_data['filepath']}")
+                        added_count += 1
+                    else:
+                        print(f"⏭️ 跳过横向视频: {video_data['filepath']}")
+                else:
+                    unchanged_count += 1
+        
+            db.session.commit()
+            
+            refresh_task_status['progress'] = 100
+            refresh_task_status['message'] = f'更新完成！新增 {added_count} 个文件，清理 {removed_count} 个不存在文件'
+            refresh_task_status['running'] = False
+            
+            print("✅ 智能更新数据库完成")
+            print(f"📈 更新统计:")
+            print(f"   - 新增视频: {added_count}")
+            print(f"   - 删除记录: {removed_count}")
+            print(f"   - 保持不变: {unchanged_count}")
+            print(f"   - 最终总数: {Video.query.count()}")
+            
+        except Exception as e:
+            refresh_task_status = {
+                'running': False,
+                'progress': 0,
+                'message': '',
+                'error': str(e)
+            }
+            print(f"❌ 刷新文件列表失败: {str(e)}")
+            import traceback
+            print(f"🔍 详细错误信息: {traceback.format_exc()}")
+
+# 管理员API - 刷新文件列表（异步版本）
 @app.route('/api/admin/refresh-files', methods=['POST'])
 def admin_refresh_files():
     # 检查用户权限
@@ -850,146 +1000,42 @@ def admin_refresh_files():
     if not user or not user.is_admin:
         return jsonify({'error': '权限不足'}), 403
     
+    # 检查是否已有任务在运行
+    if refresh_task_status['running']:
+        return jsonify({
+            'status': 'running',
+            'message': '文件刷新任务正在运行中，请稍后查看结果',
+            'progress': refresh_task_status['progress']
+        })
+    
     try:
-        # 获取媒体目录路径
-        media_dir = app.config['MEDIA_FOLDER']
-        print(f"🎯 开始智能扫描媒体目录: {media_dir}")
-        print(f"📁 媒体目录是否存在: {os.path.exists(media_dir)}")
-        
-        if os.path.exists(media_dir):
-            print(f"📂 媒体目录权限: {oct(os.stat(media_dir).st_mode)}")
-        
-        # 获取当前数据库中的所有视频记录
-        existing_videos = Video.query.all()
-        existing_filepaths = {v.filepath: v for v in existing_videos}
-        existing_filenames = {v.filename: v for v in existing_videos}
-        
-        print(f"🗃️ 当前数据库中的视频记录数: {len(existing_videos)}")
-        
-        # 扫描文件系统中的视频文件
-        video_files = []
-        scanned_dirs = []
-        file_system_files = set()
-        
-        # 递归扫描所有子目录，过滤隐藏文件和目录
-        for root, dirs, files in os.walk(media_dir):
-            # 过滤隐藏目录（以.开头的目录）
-            dirs[:] = [d for d in dirs if not d.startswith('.')]
-            
-            # 检查当前目录是否为隐藏目录（路径中包含/.的目录）
-            if any(part.startswith('.') for part in root.split(os.sep)):
-                print(f"⏭️ 跳过隐藏目录: {root}")
-                continue
-                
-            scanned_dirs.append(root)
-            print(f"🔍 扫描目录: {root}")
-            print(f"   - 子目录: {dirs}")
-            print(f"   - 文件数: {len(files)}")
-            
-            for file in files:
-                # 跳过隐藏文件（以.开头的文件）
-                if file.startswith('.'):
-                    print(f"⏭️ 跳过隐藏文件: {file}")
-                    continue
-                    
-                if file.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
-                    file_path = os.path.join(root, file)
-                    relative_path = os.path.relpath(file_path, media_dir)
-                    
-                    # 检查相对路径是否包含隐藏目录
-                    if any(part.startswith('.') for part in relative_path.split(os.sep)):
-                        print(f"⏭️ 跳过隐藏路径中的文件: {relative_path}")
-                        continue
-                    
-                    print(f"   ✅ 找到视频文件: {file}")
-                    print(f"     完整路径: {file_path}")
-                    print(f"     相对路径: {relative_path}")
-                    print(f"     文件是否存在: {os.path.exists(file_path)}")
-                    
-                    video_files.append({
-                        'filename': file,
-                        'filepath': relative_path,
-                        'full_path': file_path
-                    })
-                    file_system_files.add(relative_path)
-        
-        print(f"📊 扫描完成统计:")
-        print(f"   - 扫描目录总数: {len(scanned_dirs)}")
-        print(f"   - 找到视频文件数: {len(video_files)}")
-        
-        # 智能更新数据库
-        added_count = 0
-        removed_count = 0
-        unchanged_count = 0
-        
-        # 修复路径匹配：将数据库中的完整路径转换为相对路径进行比较
-        existing_relative_paths = {}
-        for filepath, video in existing_filepaths.items():
-            try:
-                relative_path = os.path.relpath(filepath, media_dir)
-                existing_relative_paths[relative_path] = video
-            except ValueError:
-                # 如果路径转换失败，可能是跨磁盘路径，直接使用文件名
-                existing_relative_paths[video.filename] = video
-        
-        # 1. 删除数据库中不存在对应文件的记录
-        for relative_path, video in existing_relative_paths.items():
-            if relative_path not in file_system_files:
-                print(f"🗑️ 删除数据库中不存在的文件记录: {relative_path}")
-                db.session.delete(video)
-                removed_count += 1
-        
-        # 2. 添加新增的文件到数据库
-        for video_data in video_files:
-            if video_data['filepath'] not in existing_relative_paths:
-                # 检查是否为纵向视频
-                if is_portrait_video(video_data['full_path']):
-                    video = Video(
-                        filename=video_data['filepath'],
-                        filepath=video_data['full_path']
-                    )
-                    db.session.add(video)
-                    print(f"💾 添加新增视频到数据库: {video_data['filepath']}")
-                    added_count += 1
-                else:
-                    print(f"⏭️ 跳过横向视频: {video_data['filepath']}")
-            else:
-                unchanged_count += 1
-        
-        db.session.commit()
-        print("✅ 智能更新数据库完成")
-        print(f"📈 更新统计:")
-        print(f"   - 新增视频: {added_count}")
-        print(f"   - 删除记录: {removed_count}")
-        print(f"   - 保持不变: {unchanged_count}")
-        print(f"   - 最终总数: {Video.query.count()}")
+        # 启动后台任务
+        thread = threading.Thread(target=async_refresh_files)
+        thread.daemon = True
+        thread.start()
         
         return jsonify({
-            'message': f'智能更新文件列表完成',
-            'statistics': {
-                'total_files_found': len(video_files),
-                'videos_added': added_count,
-                'records_removed': removed_count,
-                'videos_unchanged': unchanged_count,
-                'final_total': Video.query.count()
-            },
-            'details': {
-                'media_directory': media_dir,
-                'scanned_directories': len(scanned_dirs),
-                'file_operations': {
-                    'added': [v['filepath'] for v in video_files if v['filepath'] not in existing_filenames],
-                    'removed': [filepath for filepath in existing_filepaths.keys() if filepath not in file_system_files]
-                }
-            },
-            'summary': f'更新完成：扫描到{len(video_files)}个视频文件，新增{added_count}个文件，清理{removed_count}个不存在文件数据，最新总文件数：{Video.query.count()}'
+            'status': 'started',
+            'message': '文件刷新任务已开始，将在后台处理',
+            'progress': 0
         })
         
     except Exception as e:
-        db.session.rollback()
-        print(f"❌ 刷新文件列表失败: {str(e)}")
-        import traceback
-        print(f"🔍 详细错误信息: {traceback.format_exc()}")
-        return jsonify({'error': f'刷新文件列表失败: {str(e)}'}), 500
+        return jsonify({'error': f'启动刷新任务失败: {str(e)}'}), 500
+
+# 管理员API - 获取刷新任务状态
+@app.route('/api/admin/refresh-status', methods=['GET'])
+def admin_refresh_status():
+    # 检查用户权限
+    user_id = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not user_id:
+        return jsonify({'error': '未授权'}), 401
+    
+    user = User.query.get(user_id)
+    if not user or not user.is_admin:
+        return jsonify({'error': '权限不足'}), 403
+    
+    return jsonify(refresh_task_status)
 
 # 应用启动时自动初始化数据库
 def initialize_database():

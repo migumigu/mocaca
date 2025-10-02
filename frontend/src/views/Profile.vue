@@ -439,10 +439,12 @@ export default {
 
     const refreshFileList = async () => {
       refreshing.value = true
-      refreshMessage.value = ''
+      refreshMessage.value = '正在启动文件刷新任务...'
       
       try {
         const baseUrl = getBaseUrl()
+        
+        // 1. 启动异步刷新任务
         const res = await fetch(`${baseUrl}/admin/refresh-files`, {
           method: 'POST',
           headers: {
@@ -451,17 +453,56 @@ export default {
           }
         })
         
-        if (res.ok) {
-          const data = await res.json()
-          // 优先显示summary中的详细统计信息，如果没有则显示message
-          refreshMessage.value = data.summary || data.message || '文件列表更新成功'
-        } else {
+        if (!res.ok) {
           const errorData = await res.json()
-          refreshMessage.value = errorData.error || '更新失败'
+          refreshMessage.value = errorData.error || '启动刷新任务失败'
+          refreshing.value = false
+          return
         }
+        
+        const startData = await res.json()
+        
+        // 2. 轮询任务状态
+        const pollStatus = async () => {
+          try {
+            const statusRes = await fetch(`${baseUrl}/admin/refresh-status`, {
+              headers: {
+                'Authorization': `Bearer ${currentUser.value.id}`
+              }
+            })
+            
+            if (statusRes.ok) {
+              const statusData = await statusRes.json()
+              
+              if (statusData.running) {
+                // 任务仍在运行，更新进度信息
+                refreshMessage.value = `${statusData.message} (进度: ${statusData.progress}%)`
+                // 继续轮询
+                setTimeout(pollStatus, 1000) // 每秒轮询一次
+              } else {
+                // 任务完成
+                if (statusData.error) {
+                  refreshMessage.value = `刷新失败: ${statusData.error}`
+                } else {
+                  refreshMessage.value = statusData.message || '文件列表刷新完成'
+                }
+                refreshing.value = false
+              }
+            } else {
+              refreshMessage.value = '获取任务状态失败'
+              refreshing.value = false
+            }
+          } catch (error) {
+            refreshMessage.value = '轮询任务状态时发生错误'
+            refreshing.value = false
+          }
+        }
+        
+        // 开始轮询
+        setTimeout(pollStatus, 1000)
+        
       } catch (error) {
         refreshMessage.value = '网络错误，请重试'
-      } finally {
         refreshing.value = false
       }
     }

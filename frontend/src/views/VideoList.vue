@@ -493,7 +493,7 @@ export default {
             const videoIndex = videos.value.findIndex(v => v.id === video.id)
             if (videoIndex !== -1) {
               const video = videos.value[videoIndex]
-              videos.value[videoIndex].thumbnail_url = `${baseUrl}/thumbnails/${video.id}_${encodeURIComponent(video.filename)}.jpg`
+              videos.value[videoIndex].thumbnail_url = `${baseUrl}/thumbnails/${video.id}_${encodeURIComponent(video.filename.split('/').pop())}.jpg`
               videos.value = [...videos.value]
             }
           } catch (error) {
