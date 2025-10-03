@@ -34,6 +34,8 @@
               webkit-playsinline
               x5-playsinline
               autoplay
+              muted
+              preload="metadata"
               @loadstart="handleVideoLoadStart"
               @loadedmetadata="handleVideoLoadedMetadata"
               @canplay="handleVideoCanPlay"
@@ -41,6 +43,7 @@
               @pause="handleVideoPause"
               @ended="handleVideoEnded"
               @timeupdate="handleTimeUpdate"
+              @progress="handleVideoProgress"
             ></video>
             
             <!-- 视频信息 -->
@@ -250,7 +253,7 @@ export default {
         videoRefs.value.length = playlistVideos.value.length
       }
       
-      console.log('模态框播放器初始化:', {
+      console.log(`=== 模态框播放器初始化 === ${new Date().toISOString()}`, {
         video: video.value,
         index: currentIndex.value,
         total: totalVideos.value,
@@ -270,48 +273,66 @@ export default {
     const playVideo = async () => {
       let videoRef = getCurrentVideoRef()
       if (!videoRef) {
-        console.log('videoRef为null，等待视频元素创建...')
-        // 等待一段时间后重试
-        await new Promise(resolve => setTimeout(resolve, 200))
-        videoRef = getCurrentVideoRef()
+        console.log(`=== videoRef为null，等待视频元素创建 === ${new Date().toISOString()}`)
+        // 等待视频元素创建，最多等待1秒
+        for (let i = 0; i < 5; i++) {
+          await new Promise(resolve => setTimeout(resolve, 200))
+          videoRef = getCurrentVideoRef()
+          if (videoRef) {
+            console.log(`=== 视频元素创建完成 === ${new Date().toISOString()}`)
+            break
+          }
+        }
         if (!videoRef) {
-          console.log('videoRef仍然为null，无法播放')
+          console.log('=== videoRef仍然为null，无法播放 ===')
           return false
         }
       }
       
       // 确保模态框仍然可见
       if (!visible.value) {
-        console.log('模态框已关闭，取消播放')
+        console.log('=== 模态框已关闭，取消播放 ===')
         return false
       }
       
-      console.log('开始播放视频')
+      console.log(`=== 开始播放视频 === ${new Date().toISOString()}`)
       
       try {
-        const playPromise = videoRef.play()
-        
-        // 处理播放Promise
-        await playPromise.catch(async (error) => {
-          console.log('第一次播放失败，尝试延迟播放:', error)
-          // 延迟后重试播放
-          await new Promise(resolve => setTimeout(resolve, 500))
-          const retryVideoRef = getCurrentVideoRef()
-          if (retryVideoRef) {
-            return retryVideoRef.play()
-          }
-          throw error
-        })
-        
-        console.log('播放命令已发送，立即更新播放状态...')
-        
-        // 简化播放状态管理：直接设置播放状态为true
-        isPlaying.value = true
-        console.log('播放状态已设置为true')
-        
-        return true
+        // 检查视频是否已经可以播放
+        if (videoRef.readyState >= 3) { // HAVE_FUTURE_DATA 或 HAVE_ENOUGH_DATA
+          console.log(`=== 视频已就绪，直接播放 === ${new Date().toISOString()}`)
+          await videoRef.play()
+          isPlaying.value = true
+          return true
+        } else {
+          console.log(`=== 视频未就绪，等待canplay事件 === ${new Date().toISOString()}`)
+          // 等待canplay事件
+          const playPromise = new Promise((resolve, reject) => {
+            const onCanPlay = () => {
+              videoRef.removeEventListener('canplay', onCanPlay)
+              resolve(videoRef.play())
+            }
+            const onError = () => {
+              videoRef.removeEventListener('error', onError)
+              reject(new Error('视频加载错误'))
+            }
+            videoRef.addEventListener('canplay', onCanPlay, { once: true })
+            videoRef.addEventListener('error', onError, { once: true })
+            
+            // 设置超时
+            setTimeout(() => {
+              videoRef.removeEventListener('canplay', onCanPlay)
+              videoRef.removeEventListener('error', onError)
+              reject(new Error('视频加载超时'))
+            }, 3000) // 3秒超时
+          })
+          
+          await playPromise
+          isPlaying.value = true
+          return true
+        }
       } catch (error) {
-        console.error('视频播放失败:', error)
+        console.error(`=== 视频播放失败 === ${new Date().toISOString()}`, error)
         isPlaying.value = false
         return false
       }
@@ -361,20 +382,61 @@ export default {
       checkDislikeStatus()
     }
 
-    // 视频加载开始
+    // 视频加载开始 - 添加时间戳记录
+    const loadStartTime = ref(0)
     const handleVideoLoadStart = () => {
-      console.log('=== 视频加载开始 ===')
+      loadStartTime.value = Date.now()
+      console.log(`=== 视频加载开始 === ${new Date().toISOString()}`)
       isLoading.value = true
     }
 
-    // 视频元数据加载完成
-    const handleVideoLoadedMetadata = () => {
-      console.log('=== 视频元数据加载完成 ===')
+    // 视频元数据加载完成 - 添加耗时统计
+    const handleVideoLoadedMetadata = (event) => {
+      const videoRef = event.target
+      const loadEndTime = Date.now()
+      const loadDuration = loadEndTime - loadStartTime.value
+      
+      console.log(`=== 视频元数据加载完成 === ${new Date().toISOString()}`, {
+        loadDuration: `${loadDuration}ms`,
+        apiResponseTime: loadDuration, // API响应时间
+        videoElement: videoRef,
+        metadata: {
+          duration: videoRef.duration,
+          videoWidth: videoRef.videoWidth,
+          videoHeight: videoRef.videoHeight,
+          readyState: videoRef.readyState,
+          networkState: videoRef.networkState,
+          buffered: videoRef.buffered.length > 0 ? {
+            length: videoRef.buffered.length,
+            start: videoRef.buffered.length > 0 ? videoRef.buffered.start(0) : 0,
+            end: videoRef.buffered.length > 0 ? videoRef.buffered.end(0) : 0
+          } : 'no buffered data',
+          currentTime: videoRef.currentTime,
+          paused: videoRef.paused,
+          ended: videoRef.ended,
+          playbackRate: videoRef.playbackRate,
+          muted: videoRef.muted,
+          volume: videoRef.volume,
+          src: videoRef.src,
+          currentSrc: videoRef.currentSrc
+        },
+        videoInfo: {
+          filename: playlistVideos.value[currentIndex.value]?.filename,
+          id: playlistVideos.value[currentIndex.value]?.id
+        }
+      })
     }
 
-    // 视频可以播放
+    // 视频可以播放 - 添加总耗时统计
+    const canplayStartTime = ref(0)
     const handleVideoCanPlay = () => {
-      console.log('=== 视频可以播放 ===')
+      const canplayEndTime = Date.now()
+      const totalLoadDuration = canplayEndTime - loadStartTime.value
+      
+      console.log(`=== 视频可以播放 === ${new Date().toISOString()}`, {
+        totalLoadDuration: `${totalLoadDuration}ms`,
+        fromLoadStartToCanplay: totalLoadDuration // 从开始加载到可以播放的总时间
+      })
       isLoading.value = false
     }
 
@@ -392,9 +454,20 @@ export default {
       }
     }
 
+    // 视频缓冲进度更新
+    const handleVideoProgress = () => {
+      const videoRef = getCurrentVideoRef()
+      if (videoRef && videoRef.buffered.length > 0) {
+        const bufferedEnd = videoRef.buffered.end(videoRef.buffered.length - 1)
+        const duration = videoRef.duration || 1
+        const bufferedPercent = (bufferedEnd / duration * 100).toFixed(1)
+        console.log(`=== 缓冲进度: ${bufferedPercent}% (${bufferedEnd.toFixed(1)}s/${duration.toFixed(1)}s) === ${new Date().toISOString()}`)
+      }
+    }
+
     // 视频播放开始
     const handleVideoPlay = () => {
-      console.log('=== 视频开始播放 ===')
+      console.log(`=== 视频开始播放 === ${new Date().toISOString()}`)
       isPlaying.value = true
     }
 

@@ -28,10 +28,12 @@
       </div>
 
       <div v-else class="favorites-grid">
+        <!-- 当模态框播放器显示时，隐藏视频卡片以避免不必要的缩略图计算 -->
         <div 
           v-for="video in favorites" 
           :key="video.id"
           class="video-card"
+          :style="{ display: modalPlayerVisible ? 'none' : 'block' }"
           @click="openPlayer(video)"
         >
           <div class="video-thumbnail">
@@ -120,6 +122,9 @@ export default {
     const modalPlayerVisible = ref(false)
     const currentPlayingVideo = ref(null)
     const currentPlayingIndex = ref(-1)
+    
+    // 缩略图URL缓存
+    const thumbnailCache = ref({})
 
     const loadFavorites = async (page = 1, append = false) => {
       if (!currentUser.value || loading.value) return
@@ -183,24 +188,37 @@ export default {
       return baseName.replace(/\.[^/.]+$/, "")
     }
 
-    // 获取缩略图URL - 优化逻辑
+    // 获取缩略图URL - 带缓存优化
     const getThumbnailUrl = (video) => {
+      const videoId = video.id
+      
+      // 检查缓存中是否已有该视频的缩略图URL
+      if (thumbnailCache.value[videoId]) {
+        console.log('📦 Using cached thumbnail URL for video:', videoId)
+        return thumbnailCache.value[videoId]
+      }
+      
       console.log('🔍 getThumbnailUrl called with video:', {
-        id: video.id,
+        id: videoId,
         filename: video.filename,
         thumbnail_url: video.thumbnail_url
       })
       
-      // 如果后端返回了缩略图URL，直接使用
+      let thumbnailUrl
+      
+      // 如果后端返回了缩略图URL，直接使用并缓存
       if (video.thumbnail_url) {
-        console.log('📸 Using backend thumbnail_url:', video.thumbnail_url)
-        return video.thumbnail_url
+        thumbnailUrl = video.thumbnail_url
+        console.log('📸 Using backend thumbnail_url:', thumbnailUrl)
+      } else {
+        // 使用API服务中的统一缩略图URL生成方法
+        thumbnailUrl = videoApi.getThumbnailUrl(videoId)
+        console.log('🔄 Generated thumbnail URL via API service:', thumbnailUrl)
       }
       
-      // 使用API服务中的统一缩略图URL生成方法
-      const thumbnailUrl = videoApi.getThumbnailUrl(video.id)
-      console.log('🔄 Generated thumbnail URL via API service:', thumbnailUrl)
-      console.log('📊 videoApi.getThumbnailUrl method:', videoApi.getThumbnailUrl.toString())
+      // 将结果存入缓存
+      thumbnailCache.value[videoId] = thumbnailUrl
+      console.log('💾 Cached thumbnail URL for video:', videoId)
       
       return thumbnailUrl
     }

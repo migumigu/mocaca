@@ -12,12 +12,79 @@ import uuid
 from PIL import Image
 import io
 import base64
+import time
+import hashlib
+from collections import OrderedDict
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.dirname(__file__), 'instance', 'videos.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+
+# 文件句柄缓存管理器
+class FileHandleCache:
+    def __init__(self, max_size=10, timeout=300):
+        self.cache = OrderedDict()
+        self.max_size = max_size
+        self.timeout = timeout
+    
+    def get(self, filepath):
+        """获取文件句柄，如果存在且未超时"""
+        if filepath in self.cache:
+            handle_info = self.cache[filepath]
+            if time.time() - handle_info['last_access'] < self.timeout:
+                # 更新访问时间并移动到最新位置
+                handle_info['last_access'] = time.time()
+                self.cache.move_to_end(filepath)
+                return handle_info['handle']
+            else:
+                # 超时，关闭句柄并移除
+                self._close_handle(handle_info['handle'])
+                del self.cache[filepath]
+        return None
+    
+    def put(self, filepath, handle):
+        """添加文件句柄到缓存"""
+        if filepath in self.cache:
+            # 如果已存在，先关闭旧句柄
+            self._close_handle(self.cache[filepath]['handle'])
+        
+        # 添加新句柄
+        self.cache[filepath] = {
+            'handle': handle,
+            'last_access': time.time()
+        }
+        
+        # 如果超过最大大小，移除最旧的
+        if len(self.cache) > self.max_size:
+            oldest_filepath, oldest_info = self.cache.popitem(last=False)
+            self._close_handle(oldest_info['handle'])
+    
+    def _close_handle(self, handle):
+        """安全关闭文件句柄"""
+        try:
+            if handle and not handle.closed:
+                handle.close()
+        except Exception as e:
+            print(f"关闭文件句柄时出错: {e}")
+    
+    def cleanup(self):
+        """清理超时的句柄"""
+        current_time = time.time()
+        expired_files = []
+        
+        for filepath, handle_info in self.cache.items():
+            if current_time - handle_info['last_access'] > self.timeout:
+                expired_files.append(filepath)
+        
+        for filepath in expired_files:
+            handle_info = self.cache[filepath]
+            self._close_handle(handle_info['handle'])
+            del self.cache[filepath]
+
+# 全局文件句柄缓存
+file_handle_cache = FileHandleCache(max_size=20, timeout=180)  # 缓存20个文件，3分钟超时
 
 
 
@@ -210,17 +277,132 @@ def get_prev_video(video_id):
 
 @app.route('/api/videos/file/<path:filename>')
 def get_video_file(filename):
-    """获取视频文件（支持子目录，优化流式传输）"""
+    """获取视频文件（支持子目录，实现优化的流式传输）"""
+    start_time = time.time()
     video_path = os.path.join(app.config['MEDIA_FOLDER'], filename)
-    if os.path.exists(video_path):
-        # 从完整路径中提取目录和文件名
-        dirname = os.path.dirname(video_path)
-        basename = os.path.basename(video_path)
-        response = send_from_directory(dirname, basename)
-        # 添加Range请求支持，启用流式播放
+    
+    if not os.path.exists(video_path):
+        print(f"❌ 视频文件不存在: {video_path}")
+        return jsonify({'error': 'Video not found'}), 404
+    
+    # 获取文件信息
+    file_size = os.path.getsize(video_path)
+    file_mtime = os.path.getmtime(video_path)
+    
+    # 设置缓存头（1小时缓存）
+    cache_control = 'public, max-age=3600'
+    
+    # 检查ETag和If-None-Match
+    etag = f'"{file_size}-{file_mtime}"'
+    if_none_match = request.headers.get('If-None-Match')
+    if if_none_match and if_none_match == etag:
+        return '', 304  # Not Modified
+    
+    # 获取Range请求头
+    range_header = request.headers.get('Range')
+    
+    if not range_header:
+        # 如果没有Range请求，返回整个文件
+        response = send_from_directory(os.path.dirname(video_path), os.path.basename(video_path))
         response.headers.add('Accept-Ranges', 'bytes')
+        response.headers.add('Cache-Control', cache_control)
+        response.headers.add('ETag', etag)
+        
+        # 记录响应时间
+        response_time = time.time() - start_time
+        print(f"📊 完整文件响应时间: {response_time:.3f}s - {filename}")
         return response
-    return jsonify({'error': 'Video not found'}), 404
+    
+    # 解析Range请求头（格式：bytes=start-end）
+    try:
+        range_type, range_value = range_header.split('=')
+        if range_type != 'bytes':
+            raise ValueError("Invalid range type")
+        
+        start_str, end_str = range_value.split('-')
+        start = int(start_str) if start_str else 0
+        end = int(end_str) if end_str else file_size - 1
+        
+        # 验证范围有效性
+        if start < 0 or end < 0 or start >= file_size or end >= file_size or start > end:
+            return jsonify({'error': 'Invalid range'}), 416
+        
+        # 计算读取大小（限制最大读取大小）
+        content_length = end - start + 1
+        max_chunk_size = 1024 * 1024 * 10  # 10MB最大块大小
+        if content_length > max_chunk_size:
+            end = start + max_chunk_size - 1
+            content_length = max_chunk_size
+        
+        # 使用文件句柄缓存读取文件
+        try:
+            # 尝试从缓存获取文件句柄
+            file_handle = file_handle_cache.get(video_path)
+            
+            if file_handle is None:
+                # 缓存中没有，打开新文件句柄
+                file_handle = open(video_path, 'rb')
+                file_handle_cache.put(video_path, file_handle)
+                print(f"📂 打开新文件句柄: {filename}")
+            else:
+                print(f"♻️ 使用缓存文件句柄: {filename}")
+            
+            # 使用缓存的文件句柄读取数据
+            file_handle.seek(start)
+            
+            # 分块读取，避免大文件内存问题
+            chunk_size = min(content_length, 8192)  # 8KB chunks
+            data = b''
+            remaining = content_length
+            
+            while remaining > 0:
+                chunk = file_handle.read(min(chunk_size, remaining))
+                if not chunk:
+                    break
+                data += chunk
+                remaining -= len(chunk)
+        
+        except (IOError, OSError) as e:
+            print(f"❌ 文件读取错误: {e}")
+            # 文件读取失败，清理缓存并返回整个文件作为备选方案
+            if video_path in file_handle_cache.cache:
+                file_handle_cache._close_handle(file_handle_cache.cache[video_path]['handle'])
+                del file_handle_cache.cache[video_path]
+            
+            response = send_from_directory(os.path.dirname(video_path), os.path.basename(video_path))
+            response.headers.add('Accept-Ranges', 'bytes')
+            response.headers.add('Cache-Control', cache_control)
+            response.headers.add('ETag', etag)
+            return response
+        
+        # 构建响应
+        response = app.response_class(
+            data,
+            status=206,  # Partial Content
+            mimetype='video/mp4',
+            direct_passthrough=False
+        )
+        
+        response.headers.add('Content-Range', f'bytes {start}-{end}/{file_size}')
+        response.headers.add('Accept-Ranges', 'bytes')
+        response.headers.add('Content-Length', str(content_length))
+        response.headers.add('Cache-Control', cache_control)
+        response.headers.add('ETag', etag)
+        
+        # 记录响应时间
+        response_time = time.time() - start_time
+        print(f"📊 Range请求响应时间: {response_time:.3f}s - {filename} (Range: {start_str}-{end_str})")
+        
+        return response
+        
+    except (ValueError, IndexError, TypeError) as e:
+        print(f"❌ Range请求解析错误: {e}")
+        # Range请求格式错误，返回整个文件
+        response = send_from_directory(os.path.dirname(video_path), os.path.basename(video_path))
+        response.headers.add('Accept-Ranges', 'bytes')
+        response.headers.add('Cache-Control', cache_control)
+        response.headers.add('ETag', etag)
+        return response
 
 @app.route('/thumbnails/<filename>')
 def serve_thumbnail(filename):
@@ -1040,6 +1222,19 @@ def admin_refresh_status():
     
     return jsonify(refresh_task_status)
 
+# 定时清理文件句柄缓存
+def start_cache_cleanup_task():
+    """启动定时清理任务"""
+    def cleanup_task():
+        while True:
+            time.sleep(60)  # 每分钟清理一次
+            file_handle_cache.cleanup()
+            print("🧹 清理超时文件句柄缓存")
+    
+    thread = threading.Thread(target=cleanup_task)
+    thread.daemon = True
+    thread.start()
+
 # 应用启动时自动初始化数据库
 def initialize_database():
     """在应用启动时初始化数据库"""
@@ -1048,6 +1243,9 @@ def initialize_database():
 
 # 在应用启动时立即初始化数据库
 initialize_database()
+
+# 启动缓存清理任务
+start_cache_cleanup_task()
 
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', '5003'))

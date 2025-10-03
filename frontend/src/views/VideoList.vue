@@ -16,6 +16,7 @@
           v-for="video in videos" 
           :key="video.id"
           class="video-card"
+          :style="{ display: modalPlayerVisible ? 'none' : 'block' }"
           @click="openPlayer(video)"
         >
           <div class="video-thumbnail">
@@ -109,6 +110,9 @@ export default {
     const modalPlayerVisible = ref(false)
     const currentPlayingVideo = ref(null)
     const currentPlayingIndex = ref(-1)
+    
+    // 缩略图URL缓存
+    const thumbnailCache = ref({})
     
 
     
@@ -438,13 +442,37 @@ export default {
 
     // 获取缩略图URL - 优化逻辑
     const getThumbnailUrl = (video) => {
-      // 如果后端返回了缩略图URL，直接使用
-      if (video.thumbnail_url) {
-        return video.thumbnail_url
+      const videoId = video.id
+      
+      // 检查缓存中是否已有该视频的缩略图URL
+      if (thumbnailCache.value[videoId]) {
+        console.log('📦 Using cached thumbnail URL for video:', videoId)
+        return thumbnailCache.value[videoId]
       }
       
-      // 使用API服务中的统一缩略图URL生成方法
-      return videoApi.getThumbnailUrl(video.id)
+      console.log('🔍 getThumbnailUrl called with video:', {
+        id: videoId,
+        filename: video.filename,
+        thumbnail_url: video.thumbnail_url
+      })
+      
+      let thumbnailUrl
+      
+      // 如果后端返回了缩略图URL，直接使用并缓存
+      if (video.thumbnail_url) {
+        thumbnailUrl = video.thumbnail_url
+        console.log('📸 Using backend thumbnail_url:', thumbnailUrl)
+      } else {
+        // 使用API服务中的统一缩略图URL生成方法
+        thumbnailUrl = videoApi.getThumbnailUrl(videoId)
+        console.log('🔄 Generated thumbnail URL via API service:', thumbnailUrl)
+      }
+      
+      // 将结果存入缓存
+      thumbnailCache.value[videoId] = thumbnailUrl
+      console.log('💾 Cached thumbnail URL for video:', videoId)
+      
+      return thumbnailUrl
     }
 
     // 缩略图加载成功处理
