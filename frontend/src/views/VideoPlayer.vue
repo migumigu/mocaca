@@ -130,6 +130,7 @@
 <script>
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { videoApi, favoriteApi, dislikeApi } from '../services/api.js'
 
 export default {
   props: {
@@ -200,7 +201,7 @@ export default {
     const favoritesList = ref([])
     const currentFavoritesIndex = ref(-1)
 
-    // 加载收藏列表导航信息（使用后端API）
+    // 加载收藏列表导航信息（使用统一API服务）
     const loadFavoritesNavigation = async (videoId) => {
       if (!isFavoritesPage.value) return
       
@@ -209,36 +210,28 @@ export default {
         if (!savedUser) return
         
         const user = JSON.parse(savedUser)
-        const baseUrl = getBaseUrl()
-        const res = await fetch(`${baseUrl}/favorites/navigation/${videoId}?user_id=${user.id}`)
+        const data = await favoriteApi.getFavoriteNavigation(videoId, user.id)
         
-        if (res.ok) {
-          const data = await res.json()
-          // 设置导航信息
-          nextVideoId.value = data.next_video_id
-          prevVideoId.value = data.prev_video_id
-          currentVideoIndex.value = data.current_index
-          totalVideos.value = data.total_favorites
-        }
+        // 设置导航信息
+        nextVideoId.value = data.next_video_id
+        prevVideoId.value = data.prev_video_id
+        currentVideoIndex.value = data.current_index
+        totalVideos.value = data.total_favorites
       } catch (error) {
         console.error('加载收藏列表导航失败:', error)
       }
     }
 
-    // 获取当前视频信息
+    // 获取当前视频信息（使用统一API服务）
     const fetchVideoInfo = async (id) => {
       try {
-        const baseUrl = getBaseUrl()
-        const res = await fetch(`${baseUrl}/videos/${id}`)
-        if (!res.ok) throw new Error(`HTTP错误! 状态码: ${res.status}`)
-        
-        const data = await res.json()
+        const data = await videoApi.getVideo(id)
         currentVideo.value = {
           ...data,
-          url: `${baseUrl}/videos/file/${encodeURIComponent(data.filename)}`
+          url: videoApi.getVideoFileUrl(data.filename)
         }
         
-        // 如果在收藏页面，使用后端导航API获取上下视频
+        // 如果在收藏页面，使用统一API服务获取上下视频
         if (isFavoritesPage.value) {
           await loadFavoritesNavigation(id)
         } else if (isPlaylistPage.value) {
@@ -248,14 +241,10 @@ export default {
           // 普通页面按所有视频顺序设置
           nextVideoId.value = data.next_id
           
-          // 获取前一个视频ID
+          // 获取前一个视频ID（使用统一API服务）
           try {
-            const baseUrl = getBaseUrl()
-            const prevRes = await fetch(`${baseUrl}/videos/prev/${id}`)
-            if (prevRes.ok) {
-              const prevData = await prevRes.json()
-              prevVideoId.value = prevData.id
-            }
+            const prevData = await videoApi.getPrevVideo(id)
+            prevVideoId.value = prevData.id
           } catch (error) {
             console.error('获取前一个视频失败:', error)
             prevVideoId.value = null
@@ -266,85 +255,58 @@ export default {
       }
     }
 
-    // 根据播放列表类型获取导航视频（优化版：分页加载随机列表）
+    // 根据播放列表类型获取导航视频（使用统一API服务）
     const loadPlaylistNavigation = async (currentId) => {
       try {
-        const baseUrl = getBaseUrl()
-        
         if (playlistType.value === 'random') {
           // 发现页面（随机列表）：固定加载200个视频
-          let apiUrl = `${baseUrl}/videos?page=1&per_page=200&random=true`
+          const data = await videoApi.getVideos(1, 200, true, playlistSeed.value || undefined)
           
-          // 如果有种子参数，使用相同的种子保持随机顺序一致
-          if (playlistSeed.value) {
-            apiUrl += `&seed=${playlistSeed.value}`
-          } else {
-            // 如果没有种子，生成一个新的种子并保存到URL
-            const newSeed = Math.floor(Math.random() * 1000000)
-            playlistSeed.value = newSeed
-            apiUrl += `&seed=${newSeed}`
-          }
-          
-          const res = await fetch(apiUrl)
-          if (res.ok) {
-            const data = await res.json()
-            if (data.items && data.items.length > 0) {
-              playlistVideos.value = data.items
-              const videoIds = data.items.map(v => v.id)
-              const currentIndex = videoIds.indexOf(parseInt(currentId))
+          if (data.items && data.items.length > 0) {
+            playlistVideos.value = data.items
+            const videoIds = data.items.map(v => v.id)
+            const currentIndex = videoIds.indexOf(parseInt(currentId))
+            
+            if (currentIndex !== -1) {
+              // 设置卡片计数（固定为200个视频）
+              currentVideoIndex.value = currentIndex
+              totalVideos.value = 200 // 固定200个视频
               
-              if (currentIndex !== -1) {
-                // 设置卡片计数（固定为200个视频）
-                currentVideoIndex.value = currentIndex
-                totalVideos.value = 200 // 固定200个视频
-                
-                // 设置下一个视频ID
-                if (currentIndex < videoIds.length - 1) {
-                  nextVideoId.value = videoIds[currentIndex + 1]
-                } else {
-                  nextVideoId.value = null
-                }
-                
-                // 设置上一个视频ID
-                if (currentIndex > 0) {
-                  prevVideoId.value = videoIds[currentIndex - 1]
-                } else {
-                  prevVideoId.value = null
-                }
+              // 设置下一个视频ID
+              if (currentIndex < videoIds.length - 1) {
+                nextVideoId.value = videoIds[currentIndex + 1]
+              } else {
+                nextVideoId.value = null
+              }
+              
+              // 设置上一个视频ID
+              if (currentIndex > 0) {
+                prevVideoId.value = videoIds[currentIndex - 1]
+              } else {
+                prevVideoId.value = null
               }
             }
           }
         } else {
-          // 最新页面：使用后端导航API
-          const [nextRes, prevRes] = await Promise.all([
-            fetch(`${baseUrl}/videos/${currentId}`),
-            fetch(`${baseUrl}/videos/prev/${currentId}`)
+          // 最新页面：使用统一API服务
+          const [nextData, prevData] = await Promise.all([
+            videoApi.getVideo(currentId),
+            videoApi.getPrevVideo(currentId)
           ])
           
-          if (nextRes.ok) {
-            const nextData = await nextRes.json()
-            nextVideoId.value = nextData.next_id
-          }
-          
-          if (prevRes.ok) {
-            const prevData = await prevRes.json()
-            prevVideoId.value = prevData.id
-          }
+          nextVideoId.value = nextData.next_id
+          prevVideoId.value = prevData.id
           
           // 获取部分视频用于显示卡片计数
-          let apiUrl = `${baseUrl}/videos?page=1&per_page=50`
-          const res = await fetch(apiUrl)
-          if (res.ok) {
-            const data = await res.json()
-            if (data.items && data.items.length > 0) {
-              playlistVideos.value = data.items
-              const videoIds = data.items.map(v => v.id)
-              const currentIndex = videoIds.indexOf(parseInt(currentId))
-              
-              if (currentIndex !== -1) {
-                currentVideoIndex.value = currentIndex
-                totalVideos.value = data.total
-              }
+          const data = await videoApi.getVideos(1, 50)
+          if (data.items && data.items.length > 0) {
+            playlistVideos.value = data.items
+            const videoIds = data.items.map(v => v.id)
+            const currentIndex = videoIds.indexOf(parseInt(currentId))
+            
+            if (currentIndex !== -1) {
+              currentVideoIndex.value = currentIndex
+              totalVideos.value = data.total
             }
           }
         }
@@ -710,13 +672,9 @@ export default {
     const isDisliked = ref(false)
     const dislikeCount = ref(0)
 
-    const getBaseUrl = () => {
-      return import.meta.env.DEV 
-        ? '/api' 
-        : `${window.location.protocol}//${window.location.hostname}:5003/api`
-    }
 
-    // 检查收藏状态
+
+    // 检查收藏状态（使用统一API服务）
     const checkFavoriteStatus = async () => {
       const savedUser = localStorage.getItem('currentUser')
       if (!savedUser) return
@@ -726,18 +684,14 @@ export default {
       const videoId = route.params.id
 
       try {
-        const baseUrl = getBaseUrl()
-        const res = await fetch(`${baseUrl}/favorites/check?user_id=${userId}&video_id=${videoId}`)
-        if (res.ok) {
-          const data = await res.json()
-          isFavorited.value = data.is_favorited
-        }
+        const data = await favoriteApi.checkFavorite(userId, videoId)
+        isFavorited.value = data.is_favorited
       } catch (error) {
         console.error('检查收藏状态失败:', error)
       }
     }
 
-    // 检查讨厌状态
+    // 检查讨厌状态（使用统一API服务）
     const checkDislikeStatus = async () => {
       const savedUser = localStorage.getItem('currentUser')
       if (!savedUser) return
@@ -747,18 +701,14 @@ export default {
       const videoId = route.params.id
 
       try {
-        const baseUrl = getBaseUrl()
-        const res = await fetch(`${baseUrl}/dislikes/check?user_id=${userId}&video_id=${videoId}`)
-        if (res.ok) {
-          const data = await res.json()
-          isDisliked.value = data.is_disliked
-        }
+        const data = await dislikeApi.checkDislike(userId, videoId)
+        isDisliked.value = data.is_disliked
       } catch (error) {
         console.error('检查讨厌状态失败:', error)
       }
     }
 
-    // 切换收藏状态
+    // 切换收藏状态（使用统一API服务）
     const toggleFavorite = async () => {
       const savedUser = localStorage.getItem('currentUser')
       if (!savedUser) {
@@ -771,40 +721,23 @@ export default {
       const videoId = route.params.id
 
       try {
-        const baseUrl = getBaseUrl()
-        
         if (isFavorited.value) {
           // 取消收藏
-          const res = await fetch(`${baseUrl}/favorites?user_id=${userId}&video_id=${videoId}`, {
-            method: 'DELETE'
-          })
-          if (res.ok) {
-            isFavorited.value = false
-            favoriteCount.value = Math.max(0, favoriteCount.value - 1)
-          }
+          await favoriteApi.removeFavorite(userId, videoId)
+          isFavorited.value = false
+          favoriteCount.value = Math.max(0, favoriteCount.value - 1)
         } else {
           // 添加收藏
-          const res = await fetch(`${baseUrl}/favorites`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              user_id: userId,
-              video_id: videoId
-            })
-          })
-          if (res.ok) {
-            isFavorited.value = true
-            favoriteCount.value += 1
-          }
+          await favoriteApi.addFavorite(userId, videoId)
+          isFavorited.value = true
+          favoriteCount.value += 1
         }
       } catch (error) {
         console.error('收藏操作失败:', error)
       }
     }
 
-    // 切换讨厌状态
+    // 切换讨厌状态（使用统一API服务）
     const toggleDislike = async () => {
       const savedUser = localStorage.getItem('currentUser')
       if (!savedUser) {
@@ -817,33 +750,16 @@ export default {
       const videoId = route.params.id
 
       try {
-        const baseUrl = getBaseUrl()
-        
         if (isDisliked.value) {
           // 取消讨厌
-          const res = await fetch(`${baseUrl}/dislikes?user_id=${userId}&video_id=${videoId}`, {
-            method: 'DELETE'
-          })
-          if (res.ok) {
-            isDisliked.value = false
-            dislikeCount.value = Math.max(0, dislikeCount.value - 1)
-          }
+          await dislikeApi.removeDislike(userId, videoId)
+          isDisliked.value = false
+          dislikeCount.value = Math.max(0, dislikeCount.value - 1)
         } else {
           // 添加讨厌
-          const res = await fetch(`${baseUrl}/dislikes`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              user_id: userId,
-              video_id: videoId
-            })
-          })
-          if (res.ok) {
-            isDisliked.value = true
-            dislikeCount.value += 1
-          }
+          await dislikeApi.addDislike(userId, videoId)
+          isDisliked.value = true
+          dislikeCount.value += 1
         }
       } catch (error) {
         console.error('讨厌操作失败:', error)

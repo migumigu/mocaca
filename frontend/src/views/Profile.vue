@@ -245,6 +245,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import NavIcons from '../components/icons/NavIcons.vue'
+import { userApi, favoriteApi, dislikeApi, adminApi } from '../services/api.js'
 
 export default {
   components: {
@@ -276,33 +277,20 @@ export default {
     const generatingThumbnails = ref(false)
     const thumbnailMessage = ref('')
 
-    const getBaseUrl = () => {
-      return import.meta.env.DEV 
-        ? '/api' 
-        : `${window.location.protocol}//${window.location.hostname}:5003/api`
-    }
+    // 使用统一的API服务，不再需要getBaseUrl函数
 
     const handleLogin = async () => {
       loggingIn.value = true
       loginError.value = ''
       
       try {
-        const baseUrl = getBaseUrl()
-        const res = await fetch(`${baseUrl}/login`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(loginForm.value)
-        })
-        
-        const data = await res.json()
-        if (res.ok) {
-          currentUser.value = data.user
-          localStorage.setItem('currentUser', JSON.stringify(data.user))
+        const response = await userApi.login(loginForm.value.username, loginForm.value.password)
+        if (response.user) {
+          currentUser.value = response.user
+          localStorage.setItem('currentUser', JSON.stringify(response.user))
           await loadDislikes()
         } else {
-          loginError.value = data.error || '登录失败'
+          loginError.value = response.error || '登录失败'
         }
       } catch (error) {
         loginError.value = '网络错误，请重试'
@@ -322,11 +310,8 @@ export default {
       
       dislikesLoading.value = true
       try {
-        const baseUrl = getBaseUrl()
-        const res = await fetch(`${baseUrl}/dislikes?user_id=${currentUser.value.id}`)
-        if (res.ok) {
-          dislikes.value = await res.json()
-        }
+        const response = await dislikeApi.getDislikes(currentUser.value.id)
+        dislikes.value = response
       } catch (error) {
         console.error('获取讨厌列表失败:', error)
       } finally {
@@ -367,34 +352,20 @@ export default {
       passwordMessage.value = ''
       
       try {
-        const baseUrl = getBaseUrl()
-        const res = await fetch(`${baseUrl}/change-password`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            user_id: currentUser.value.id,
-            current_password: passwordForm.value.currentPassword,
-            new_password: passwordForm.value.newPassword
-          })
-        })
-        
-        if (res.ok) {
-          const data = await res.json()
-          passwordMessage.value = data.message || '密码修改成功'
-          // 清空表单
-          passwordForm.value = {
-            currentPassword: '',
-            newPassword: '',
-            confirmPassword: ''
-          }
-        } else {
-          const errorData = await res.json()
-          passwordMessage.value = errorData.error || '密码修改失败'
+        const response = await userApi.changePassword(
+          currentUser.value.id,
+          passwordForm.value.currentPassword,
+          passwordForm.value.newPassword
+        )
+        passwordMessage.value = response.message || '密码修改成功'
+        // 清空表单
+        passwordForm.value = {
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: ''
         }
       } catch (error) {
-        passwordMessage.value = '网络错误，请重试'
+        passwordMessage.value = error.error || '网络错误，请重试'
       } finally {
         changingPassword.value = false
       }
@@ -409,31 +380,14 @@ export default {
       
       try {
         console.log('Starting deletion process')
-        const baseUrl = getBaseUrl()
-        console.log('Base URL:', baseUrl)
         console.log('User ID:', currentUser.value.id)
         
-        const res = await fetch(`${baseUrl}/admin/delete-all-dislike-content`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${currentUser.value.id}`
-          }
-        })
-        
-        console.log('Response status:', res.status)
-        
-        if (res.ok) {
-          const data = await res.json()
-          alert(data.message || '所有讨厌内容删除成功')
-          // 重新加载讨厌列表（应该为空）
-          await loadDislikes()
-        } else {
-          const errorData = await res.json()
-          alert(errorData.error || '删除失败')
-        }
+        const response = await adminApi.deleteAllDislikeContent(currentUser.value.id)
+        alert(response.message || '所有讨厌内容删除成功')
+        // 重新加载讨厌列表（应该为空）
+        await loadDislikes()
       } catch (error) {
-        alert('网络错误，请重试')
+        alert(error.error || '网络错误，请重试')
       }
     }
 
@@ -442,54 +396,25 @@ export default {
       refreshMessage.value = '正在启动文件刷新任务...'
       
       try {
-        const baseUrl = getBaseUrl()
+        const response = await adminApi.refreshFiles(currentUser.value.id)
         
-        // 1. 启动异步刷新任务
-        const res = await fetch(`${baseUrl}/admin/refresh-files`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${currentUser.value.id}`
-          }
-        })
-        
-        if (!res.ok) {
-          const errorData = await res.json()
-          refreshMessage.value = errorData.error || '启动刷新任务失败'
-          refreshing.value = false
-          return
-        }
-        
-        const startData = await res.json()
-        
-        // 2. 轮询任务状态
+        // 轮询任务状态
         const pollStatus = async () => {
           try {
-            const statusRes = await fetch(`${baseUrl}/admin/refresh-status`, {
-              headers: {
-                'Authorization': `Bearer ${currentUser.value.id}`
-              }
-            })
+            const status = await adminApi.getRefreshStatus(currentUser.value.id)
             
-            if (statusRes.ok) {
-              const statusData = await statusRes.json()
-              
-              if (statusData.running) {
-                // 任务仍在运行，更新进度信息
-                refreshMessage.value = `${statusData.message} (进度: ${statusData.progress}%)`
-                // 继续轮询
-                setTimeout(pollStatus, 1000) // 每秒轮询一次
-              } else {
-                // 任务完成
-                if (statusData.error) {
-                  refreshMessage.value = `刷新失败: ${statusData.error}`
-                } else {
-                  refreshMessage.value = statusData.message || '文件列表刷新完成'
-                }
-                refreshing.value = false
-              }
+            if (status.running) {
+              // 任务仍在运行，更新进度信息
+              refreshMessage.value = `${status.message} (进度: ${status.progress}%)`
+              // 继续轮询
+              setTimeout(pollStatus, 1000) // 每秒轮询一次
             } else {
-              refreshMessage.value = '获取任务状态失败'
+              // 任务完成
+              if (status.error) {
+                refreshMessage.value = `刷新失败: ${status.error}`
+              } else {
+                refreshMessage.value = status.message || '文件列表刷新完成'
+              }
               refreshing.value = false
             }
           } catch (error) {
@@ -502,7 +427,7 @@ export default {
         setTimeout(pollStatus, 1000)
         
       } catch (error) {
-        refreshMessage.value = '网络错误，请重试'
+        refreshMessage.value = error.error || '网络错误，请重试'
         refreshing.value = false
       }
     }
@@ -516,24 +441,10 @@ export default {
       thumbnailMessage.value = ''
       
       try {
-        const baseUrl = getBaseUrl()
-        const res = await fetch(`${baseUrl}/admin/generate-thumbnails`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${currentUser.value.id}`
-          }
-        })
-        
-        if (res.ok) {
-          const data = await res.json()
-          thumbnailMessage.value = data.message || '缩略图生成成功'
-        } else {
-          const errorData = await res.json()
-          thumbnailMessage.value = errorData.error || '生成失败'
-        }
+        const response = await adminApi.generateThumbnails(currentUser.value.id)
+        thumbnailMessage.value = response.message || '缩略图生成成功'
       } catch (error) {
-        thumbnailMessage.value = '网络错误，请重试'
+        thumbnailMessage.value = error.error || '网络错误，请重试'
       } finally {
         generatingThumbnails.value = false
       }

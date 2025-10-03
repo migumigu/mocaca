@@ -147,6 +147,7 @@
 <script>
 import { ref, watch, nextTick, onMounted, toRefs } from 'vue'
 import { Swipe, SwipeItem } from 'vant'
+import { favoriteApi, dislikeApi, videoApi } from '../services/api'
 
 export default {
   name: 'ModalVideoPlayer',
@@ -230,16 +231,9 @@ export default {
     const isDisliked = ref(false)
     const showRefreshPrompt = ref(false)
     
-    // 获取基础URL
-    const getBaseUrl = () => {
-      return import.meta.env.DEV 
-        ? '/api' 
-        : `${window.location.protocol}//${window.location.hostname}:5003/api`
-    }
-    
     // 获取视频URL
     const getVideoUrl = (video) => {
-      return `${getBaseUrl()}/videos/file/${encodeURIComponent(video.filename)}`
+      return videoApi.getVideoFileUrl(video.filename)
     }
     
     // 初始化播放器
@@ -594,11 +588,8 @@ export default {
       const videoId = video.id
       
       try {
-        const res = await fetch(`${getBaseUrl()}/favorites/check?user_id=${user.id}&video_id=${videoId}`)
-        if (res.ok) {
-          const data = await res.json()
-          isFavorited.value = data.is_favorited
-        }
+        const data = await favoriteApi.checkFavorite(user.id, videoId)
+        isFavorited.value = data.is_favorited
       } catch (error) {
         console.error('检查收藏状态失败:', error)
       }
@@ -616,11 +607,8 @@ export default {
       const videoId = video.id
       
       try {
-        const res = await fetch(`${getBaseUrl()}/dislikes/check?user_id=${user.id}&video_id=${videoId}`)
-        if (res.ok) {
-          const data = await res.json()
-          isDisliked.value = data.is_disliked
-        }
+        const data = await dislikeApi.checkDislike(user.id, videoId)
+        isDisliked.value = data.is_disliked
       } catch (error) {
         console.error('检查讨厌状态失败:', error)
       }
@@ -643,17 +631,11 @@ export default {
       try {
         if (isFavorited.value) {
           // 取消收藏
-          await fetch(`${getBaseUrl()}/favorites?user_id=${user.id}&video_id=${videoId}`, {
-            method: 'DELETE'
-          })
+          await favoriteApi.removeFavorite(user.id, videoId)
           isFavorited.value = false
         } else {
           // 添加收藏
-          await fetch(`${getBaseUrl()}/favorites`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: user.id, video_id: videoId })
-          })
+          await favoriteApi.addFavorite(user.id, videoId)
           isFavorited.value = true
         }
       } catch (error) {
@@ -678,17 +660,11 @@ export default {
       try {
         if (isDisliked.value) {
           // 取消讨厌
-          await fetch(`${getBaseUrl()}/dislikes?user_id=${user.id}&video_id=${videoId}`, {
-            method: 'DELETE'
-          })
+          await dislikeApi.removeDislike(user.id, videoId)
           isDisliked.value = false
         } else {
           // 添加讨厌
-          await fetch(`${getBaseUrl()}/dislikes`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: user.id, video_id: videoId })
-          })
+          await dislikeApi.addDislike(user.id, videoId)
           isDisliked.value = true
         }
       } catch (error) {

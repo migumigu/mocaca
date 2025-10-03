@@ -100,6 +100,7 @@ import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import NavIcons from '../components/icons/NavIcons.vue'
 import ModalVideoPlayer from '../components/ModalVideoPlayer.vue'
+import { favoriteApi, videoApi } from '../services/api.js'
 
 export default {
   components: {
@@ -120,33 +121,32 @@ export default {
     const currentPlayingVideo = ref(null)
     const currentPlayingIndex = ref(-1)
 
-    const getBaseUrl = () => {
-      return import.meta.env.DEV 
-        ? '/api' 
-        : `${window.location.protocol}//${window.location.hostname}:5003/api`
-    }
-
     const loadFavorites = async (page = 1, append = false) => {
       if (!currentUser.value || loading.value) return
       
       loading.value = true
       try {
-        const baseUrl = getBaseUrl()
-        const res = await fetch(`${baseUrl}/favorites?user_id=${currentUser.value.id}&page=${page}&per_page=50`)
-        if (res.ok) {
-          const data = await res.json()
-          
-          if (append) {
-            // 追加模式：将新数据添加到现有列表
-            favorites.value = [...favorites.value, ...(data.items || [])]
-          } else {
-            // 首次加载：替换整个列表
-            favorites.value = data.items || []
-          }
-          
-          currentPage.value = data.page
-          totalPages.value = data.total_pages
-          hasMore.value = data.page < data.total_pages
+        console.log('🔍 Loading favorites for user:', currentUser.value.id, 'page:', page)
+        const response = await favoriteApi.getFavorites(currentUser.value.id, page, 50)
+        console.log('📊 Favorites API response:', response)
+
+        if (append) {
+          // 追加模式：将新数据添加到现有列表
+          favorites.value = [...favorites.value, ...(response.items || [])]
+        } else {
+          // 首次加载：替换整个列表
+          favorites.value = response.items || []
+        }
+        
+        currentPage.value = response.page
+        totalPages.value = response.total_pages
+        hasMore.value = response.page < response.total_pages
+        
+        // 调试：检查第一个视频的缩略图URL生成
+        if (favorites.value.length > 0) {
+          const firstVideo = favorites.value[0]
+          console.log('🔍 First video data:', firstVideo)
+          console.log('📸 Generated thumbnail URL for first video:', getThumbnailUrl(firstVideo))
         }
       } catch (error) {
         console.error('获取收藏列表失败:', error)
@@ -185,16 +185,24 @@ export default {
 
     // 获取缩略图URL - 优化逻辑
     const getThumbnailUrl = (video) => {
-      const baseUrl = getBaseUrl()
+      console.log('🔍 getThumbnailUrl called with video:', {
+        id: video.id,
+        filename: video.filename,
+        thumbnail_url: video.thumbnail_url
+      })
       
       // 如果后端返回了缩略图URL，直接使用
       if (video.thumbnail_url) {
+        console.log('📸 Using backend thumbnail_url:', video.thumbnail_url)
         return video.thumbnail_url
       }
       
-      // 如果没有缩略图URL，直接调用缩略图生成接口
-      // 使用 /api/thumbnail/<video_id> 接口，后端会自动生成并返回缩略图
-      return `${baseUrl}/thumbnail/${video.id}`
+      // 使用API服务中的统一缩略图URL生成方法
+      const thumbnailUrl = videoApi.getThumbnailUrl(video.id)
+      console.log('🔄 Generated thumbnail URL via API service:', thumbnailUrl)
+      console.log('📊 videoApi.getThumbnailUrl method:', videoApi.getThumbnailUrl.toString())
+      
+      return thumbnailUrl
     }
 
     // 缩略图加载成功处理

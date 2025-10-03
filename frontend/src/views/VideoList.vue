@@ -82,6 +82,7 @@ import { ref, onMounted, nextTick, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import NavIcons from '../components/icons/NavIcons.vue'
 import ModalVideoPlayer from '../components/ModalVideoPlayer.vue'
+import { videoApi } from '../services/api.js'
 
 export default {
   components: {
@@ -305,27 +306,25 @@ export default {
       
       loading.value = true
       try {
-        // 根据环境动态获取API基础URL
-        const baseUrl = import.meta.env.DEV 
-          ? '/api' 
-          : `${window.location.protocol}//${window.location.hostname}:5003/api`;
+        // 构建查询参数
+        const params = {
+          page: page.value
+        }
         
         // 获取当前用户ID，用于过滤讨厌的视频
         const savedUser = localStorage.getItem('currentUser')
         const user_id = savedUser ? JSON.parse(savedUser).id : null
-        
-        let apiUrl = `${baseUrl}/videos?page=${page.value}`
-        
         if (user_id) {
-          apiUrl += `&user_id=${user_id}`
+          params.user_id = user_id
         }
         
         if (activeTab.value === 'random') {
-          apiUrl += `&random=true&seed=${randomSeed.value}`
+          params.random = true
+          params.seed = randomSeed.value
           // 发现页面随机列表限制每页加载数量，确保不超过200个
           const remaining = 200 - videos.value.length
           if (remaining > 0) {
-            apiUrl += `&per_page=${Math.min(20, remaining)}`
+            params.per_page = Math.min(20, remaining)
           } else {
             hasMore.value = false
             loading.value = false
@@ -333,16 +332,10 @@ export default {
           }
         }
         
-        console.log(`发现页面API请求: ${apiUrl}`)
+        console.log(`发现页面API请求参数:`, params)
         
-        const res = await fetch(apiUrl, {
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-        if (!res.ok) throw new Error(`HTTP错误! 状态码: ${res.status}`)
-        
-        const data = await res.json()
+        // 使用统一的API服务获取视频列表
+        const data = await videoApi.getVideos(params.page, params.per_page, params.random, params.seed)
         console.log(`发现页面API响应:`, data)
         console.log(`当前已加载视频数量: ${videos.value.length}, 新加载视频数量: ${data.items ? data.items.length : 0}`)
         
@@ -364,8 +357,6 @@ export default {
           if (data.items.length < 20) {
             hasMore.value = false
           }
-          
-          // 缩略图现在由后端统一提供，无需前端处理
         }
       } catch (error) {
         console.error('获取视频列表失败:', error)
@@ -447,18 +438,13 @@ export default {
 
     // 获取缩略图URL - 优化逻辑
     const getThumbnailUrl = (video) => {
-      const baseUrl = import.meta.env.DEV 
-        ? '/api' 
-        : `${window.location.protocol}//${window.location.hostname}:5003/api`;
-      
       // 如果后端返回了缩略图URL，直接使用
       if (video.thumbnail_url) {
         return video.thumbnail_url
       }
       
-      // 如果没有缩略图URL，直接调用缩略图生成接口
-      // 使用 /api/thumbnail/<video_id> 接口，后端会自动生成并返回缩略图
-      return `${baseUrl}/thumbnail/${video.id}`
+      // 使用API服务中的统一缩略图URL生成方法
+      return videoApi.getThumbnailUrl(video.id)
     }
 
     // 缩略图加载成功处理
@@ -483,17 +469,18 @@ export default {
       for (const video of videosToPreGenerate) {
         if (!video.thumbnail_url) {
           try {
-            const baseUrl = import.meta.env.DEV 
-              ? '/api' 
-              : `${window.location.protocol}//${window.location.hostname}:5003/api`;
-            
-            await fetch(`${baseUrl}/thumbnail/${video.id}`)
+            // 预生成缩略图，使用API服务
+            await videoApi.apiFetch(`/thumbnail/${video.id}`)
             console.log(`预生成缩略图: ${video.id}`)
             // 更新该视频的缩略图URL，触发重新渲染
             const videoIndex = videos.value.findIndex(v => v.id === video.id)
             if (videoIndex !== -1) {
               const video = videos.value[videoIndex]
-              videos.value[videoIndex].thumbnail_url = `${baseUrl}/thumbnails/${video.id}_${encodeURIComponent(video.filename.split('/').pop())}.jpg`
+              // 使用后端返回的thumbnail_url，如果没有则使用正确的API路径
+              if (!video.thumbnail_url) {
+                // 使用API服务中的统一缩略图URL生成方法
+                videos.value[videoIndex].thumbnail_url = videoApi.getThumbnailUrl(video.id)
+              }
               videos.value = [...videos.value]
             }
           } catch (error) {

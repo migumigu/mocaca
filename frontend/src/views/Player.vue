@@ -17,6 +17,7 @@
 <script>
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { videoApi } from '../services/api.js'
 
 export default {
   setup() {
@@ -28,7 +29,7 @@ export default {
     onMounted(() => {
       // 从路由获取视频ID并设置视频URL
       const videoId = route.params.id
-      videoUrl.value = `/api/videos/file/${videoId}`
+      videoUrl.value = videoApi.getVideoFileUrl(videoId)
     })
 
     return {

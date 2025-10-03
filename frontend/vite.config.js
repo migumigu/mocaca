@@ -54,9 +54,19 @@ export default defineConfig({
       '/api': {
         target: process.env.VITE_API_BASE_URL || 'http://localhost:5003',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/api') // 保持路径不变
-      },
-
+        rewrite: (path) => path.replace(/^\/api/, '') // 移除/api前缀，后端直接接收路径
+      }
+    }
+  },
+  preview: {
+    host: '0.0.0.0',
+    port: 4173,
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_BASE_URL || 'http://localhost:5003',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '') // 移除/api前缀，后端直接接收路径
+      }
     }
   }
 })
