@@ -210,13 +210,16 @@ def get_prev_video(video_id):
 
 @app.route('/api/videos/file/<path:filename>')
 def get_video_file(filename):
-    """获取视频文件（支持子目录）"""
+    """获取视频文件（支持子目录，优化流式传输）"""
     video_path = os.path.join(app.config['MEDIA_FOLDER'], filename)
     if os.path.exists(video_path):
         # 从完整路径中提取目录和文件名
         dirname = os.path.dirname(video_path)
         basename = os.path.basename(video_path)
-        return send_from_directory(dirname, basename)
+        response = send_from_directory(dirname, basename)
+        # 添加Range请求支持，启用流式播放
+        response.headers.add('Accept-Ranges', 'bytes')
+        return response
     return jsonify({'error': 'Video not found'}), 404
 
 @app.route('/thumbnails/<filename>')
